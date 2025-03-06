@@ -1,0 +1,13 @@
+{
+  "tauri": {
+    "windows": [
+      {
+        "fullscreen": false,
+        "resizable": true,
+        "title": "Maulwurf",
+        "width": 1200,
+        "height": 800
+      }
+    ]
+  }
+} 
