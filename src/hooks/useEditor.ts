@@ -70,6 +70,47 @@ export const useEditor = () => {
     }
   }, []);
   
+  // 찾기 결과 카운트 업데이트
+  const updateFindResultsCount = useCallback((currentRange: any) => {
+    if (!editorRef.current || !findText) return;
+    
+    const model = editorRef.current.getModel();
+    if (!model) return;
+    
+    try {
+      // 전체 일치 항목 찾기
+      const allMatches = model.findMatches(
+        findText,
+        true, // searchOnlyEditableRange
+        useRegex,
+        matchCase,
+        wholeWord ? ' \t\n,.;:\'"`~!@#$%^&*()-=+[]{}\\|/?<>' : null,
+        false, // captureMatches
+        1000, // 최대 1000개 결과
+        null // 전체 문서 검색
+      );
+      
+      // 현재 선택된 항목의 인덱스 찾기
+      let currentIndex = -1;
+      for (let i = 0; i < allMatches.length; i++) {
+        const match = allMatches[i];
+        if (match.range.startLineNumber === currentRange.startLineNumber && 
+            match.range.startColumn === currentRange.startColumn) {
+          currentIndex = i;
+          break;
+        }
+      }
+      
+      // 찾기 결과 업데이트
+      setFindResults({
+        total: allMatches.length,
+        current: currentIndex + 1 // 1부터 시작하는 인덱스로 표시
+      });
+    } catch (error) {
+      console.error('찾기 결과 카운트 업데이트 오류:', error);
+    }
+  }, [findText, useRegex, matchCase, wholeWord]);
+  
   // 찾기 결과 하이라이트 함수
   const highlightFindResult = useCallback((range: any) => {
     if (!editorRef.current) return;
@@ -109,18 +150,26 @@ export const useEditor = () => {
     // 하이라이트 적용
     findHighlightDecorations.current = editorRef.current.deltaDecorations([], [...textDecorations, ...lineDecorations]);
     
-    // 커서 위치 설정 및 해당 라인으로 스크롤
-    editorRef.current.setPosition({
-      lineNumber: range.startLineNumber,
-      column: range.startColumn
-    });
-    editorRef.current.revealLineInCenter(range.startLineNumber);
-    
-    // 3초 후 하이라이트 제거
-    setTimeout(() => {
-      clearFindHighlights();
-    }, 3000);
-  }, [clearFindHighlights, findText]);
+    // 선택 영역 설정 (중요: 커서 위치만 설정하는 것이 아니라 전체 범위를 선택해야 함)
+    try {
+      editorRef.current.setSelection(range);
+      
+      // 해당 위치로 스크롤 (중앙에 표시)
+      editorRef.current.revealRangeInCenterIfOutsideViewport(range);
+      
+      // 에디터에 포커스 설정 (약간의 지연 후)
+      setTimeout(() => {
+        if (editorRef.current) {
+          editorRef.current.focus();
+          
+          // 현재 찾기 결과 업데이트
+          updateFindResultsCount(range);
+        }
+      }, 10);
+    } catch (error) {
+      console.error('하이라이트 설정 오류:', error);
+    }
+  }, [clearFindHighlights, updateFindResultsCount]);
   
   // 바꾸기 결과 하이라이트 함수
   const highlightReplaceResult = useCallback((range: any) => {
@@ -161,29 +210,15 @@ export const useEditor = () => {
     // 하이라이트 적용
     replaceHighlightDecorations.current = editorRef.current.deltaDecorations([], [...textDecorations, ...lineDecorations]);
     
-    // 커서 위치 설정 및 해당 라인으로 스크롤
-    editorRef.current.setPosition({
-      lineNumber: range.startLineNumber,
-      column: range.startColumn + replaceText.length
-    });
-    editorRef.current.revealLineInCenter(range.startLineNumber);
+    // 선택 영역 설정 (중요: 커서 위치만 설정하는 것이 아니라 전체 범위를 선택해야 함)
+    editorRef.current.setSelection(range);
     
-    // 토스트 알림 표시 (AppContext의 toast 사용)
-    if (window.dispatchEvent) {
-      const event = new CustomEvent('showToast', { 
-        detail: { 
-          type: 'success', 
-          message: `"${findText}"를 "${replaceText}"로 변경` 
-        } 
-      });
-      window.dispatchEvent(event);
-    }
+    // 해당 위치로 스크롤 (중앙에 표시)
+    editorRef.current.revealRangeInCenterIfOutsideViewport(range);
     
-    // 3초 후 하이라이트 제거
-    setTimeout(() => {
-      clearReplaceHighlights();
-    }, 3000);
-  }, [clearReplaceHighlights, findText, replaceText]);
+    // 에디터에 포커스 설정
+    editorRef.current.focus();
+  }, [clearReplaceHighlights, replaceText]);
   
   // 모든 바꾸기 결과 하이라이트 함수
   const highlightAllReplaceResults = useCallback((ranges: any[]) => {
@@ -220,32 +255,20 @@ export const useEditor = () => {
     // 하이라이트 적용
     replaceHighlightDecorations.current = editorRef.current.deltaDecorations([], [...textDecorations, ...lineDecorations]);
     
-    // 마지막 바꾸기 위치로 커서 이동 및 스크롤
+    // 마지막 바꾸기 결과로 스크롤 (일반적으로 가장 위에 있는 결과)
     if (ranges.length > 0) {
-      const lastRange = ranges[0]; // 첫 번째 범위가 마지막으로 바꾼 위치 (역순으로 정렬되어 있음)
-      editorRef.current.setPosition({
-        lineNumber: lastRange.startLineNumber,
-        column: lastRange.startColumn + replaceText.length
-      });
-      editorRef.current.revealLineInCenter(lastRange.startLineNumber);
+      const lastRange = ranges[0]; // 정렬된 순서에서 첫 번째가 가장 위에 있는 결과
+      
+      // 선택 영역 설정
+      editorRef.current.setSelection(lastRange);
+      
+      // 해당 위치로 스크롤 (중앙에 표시)
+      editorRef.current.revealRangeInCenterIfOutsideViewport(lastRange);
+      
+      // 에디터에 포커스 설정
+      editorRef.current.focus();
     }
-    
-    // 토스트 알림 표시 (AppContext의 toast 사용)
-    if (window.dispatchEvent) {
-      const event = new CustomEvent('showToast', { 
-        detail: { 
-          type: 'success', 
-          message: `${ranges.length}개의 "${findText}"를 "${replaceText}"로 변경` 
-        } 
-      });
-      window.dispatchEvent(event);
-    }
-    
-    // 3초 후 하이라이트 제거
-    setTimeout(() => {
-      clearReplaceHighlights();
-    }, 3000);
-  }, [clearReplaceHighlights, findText, replaceText]);
+  }, [clearReplaceHighlights]);
   
   // 변경 내용 하이라이트 함수
   const highlightChanges = useCallback((oldContent: string, newContent: string) => {
@@ -395,35 +418,6 @@ export const useEditor = () => {
     setGcode(value || '');
   }, []);
   
-  // 찾기/바꾸기 토글
-  const toggleFindReplace = useCallback(() => {
-    setFindReplaceVisible(prev => !prev);
-    
-    // 찾기/바꾸기 패널이 열릴 때 에디터에서 선택된 텍스트가 있으면 찾기 필드에 설정
-    if (!findReplaceVisible && editorRef.current) {
-      const selection = editorRef.current.getSelection();
-      const selectedText = editorRef.current.getModel().getValueInRange(selection);
-      
-      if (selectedText) {
-        setFindText(selectedText);
-      }
-    }
-  }, [findReplaceVisible]);
-  
-  // 실행 취소
-  const undo = useCallback(() => {
-    if (editorRef.current) {
-      editorRef.current.trigger('keyboard', 'undo', null);
-    }
-  }, []);
-  
-  // 다시 실행
-  const redo = useCallback(() => {
-    if (editorRef.current) {
-      editorRef.current.trigger('keyboard', 'redo', null);
-    }
-  }, []);
-  
   // 토스트 메시지 표시 함수 (중복 방지)
   const showToastMessage = useCallback((type: string, message: string) => {
     // 이벤트 한 번만 발생시키기
@@ -442,11 +436,11 @@ export const useEditor = () => {
   
   // 다음 찾기
   const findNext = useCallback(() => {
-    if (!editorRef.current || !findText) return;
+    if (!editorRef.current || !findText) return false;
     
     const editor = editorRef.current;
     const model = editor.getModel();
-    if (!model) return;
+    if (!model) return false;
     
     try {
       // 현재 선택 영역 가져오기
@@ -465,85 +459,97 @@ export const useEditor = () => {
         startPosition = editor.getPosition();
       }
       
-      // 현재 위치부터 문서 끝까지 검색
-      const matches = model.findMatches(
+      // 전체 문서에서 모든 일치 항목 찾기
+      const allMatches = model.findMatches(
         findText,
-        false, // searchOnlyEditableRange
+        true, // searchOnlyEditableRange
         useRegex,
         matchCase,
         wholeWord ? ' \t\n,.;:\'"`~!@#$%^&*()-=+[]{}\\|/?<>' : null,
         false, // captureMatches
-        1, // 최대 1개 결과
-        startPosition
+        1000, // 최대 1000개 결과
+        null // 전체 문서 검색
       );
       
-      // 결과가 있으면 해당 위치로 이동
-      if (matches && matches.length > 0) {
-        const match = matches[0];
+      if (allMatches.length === 0) {
+        // 일치하는 항목이 없음
+        showToastMessage('warning', `'${findText}'에 대한 검색 결과가 없습니다.`);
+        return false;
+      }
+      
+      // 현재 위치보다 다음에 있는 일치 항목 찾기
+      let nextMatch = null;
+      let currentMatchIndex = -1;
+      
+      // 현재 선택된 항목이 있는 경우, 그 인덱스 찾기
+      if (selection && !selection.isEmpty()) {
+        for (let i = 0; i < allMatches.length; i++) {
+          const match = allMatches[i];
+          if (match.range.startLineNumber === selection.startLineNumber && 
+              match.range.startColumn === selection.startColumn) {
+            currentMatchIndex = i;
+            break;
+          }
+        }
+      }
+      
+      if (currentMatchIndex >= 0 && currentMatchIndex < allMatches.length - 1) {
+        // 현재 선택된 항목이 있고, 그 다음 항목이 있는 경우
+        nextMatch = allMatches[currentMatchIndex + 1];
+      } else if (currentMatchIndex === allMatches.length - 1) {
+        // 현재 선택된 항목이 마지막 항목인 경우, 첫 번째 항목으로 이동
+        nextMatch = allMatches[0];
+        showToastMessage('info', '문서의 처음부터 다시 검색합니다.');
+      } else {
+        // 현재 선택된 항목이 없는 경우, 현재 위치보다 다음에 있는 항목 찾기
+        const cursorLine = startPosition.lineNumber;
+        const cursorColumn = startPosition.column;
         
-        // 선택 영역 설정
-        editor.setSelection(match.range);
+        // 현재 위치보다 다음에 있는 항목 중 가장 가까운 항목 찾기
+        for (let i = 0; i < allMatches.length; i++) {
+          const match = allMatches[i];
+          if (match.range.startLineNumber > cursorLine || 
+              (match.range.startLineNumber === cursorLine && match.range.startColumn >= cursorColumn)) {
+            nextMatch = match;
+            break;
+          }
+        }
         
-        // 해당 위치로 스크롤
-        editor.revealRangeInCenter(match.range);
-        
-        // 하이라이트 적용
-        highlightFindResult(match.range);
-        
-        // 토스트 알림 표시
-        showToastMessage('info', `"${findText}" 찾음`);
-        
+        // 다음 항목이 없으면 첫 번째 항목으로 이동
+        if (!nextMatch && allMatches.length > 0) {
+          nextMatch = allMatches[0];
+          showToastMessage('info', '문서의 처음부터 다시 검색합니다.');
+        }
+      }
+      
+      if (nextMatch) {
+        // 하이라이트 적용 (이 함수가 선택 영역 설정과 스크롤도 처리함)
+        highlightFindResult(nextMatch.range);
         return true;
       } else {
-        // 문서 처음부터 현재 위치까지 검색
-        const firstPosition = { lineNumber: 1, column: 1 };
-        const matchesFromStart = model.findMatches(
-          findText,
-          false,
-          useRegex,
-          matchCase,
-          wholeWord ? ' \t\n,.;:\'"`~!@#$%^&*()-=+[]{}\\|/?<>' : null,
-          false,
-          1,
-          firstPosition
-        );
-        
-        if (matchesFromStart && matchesFromStart.length > 0) {
-          const match = matchesFromStart[0];
-          
-          // 선택 영역 설정
-          editor.setSelection(match.range);
-          
-          // 해당 위치로 스크롤
-          editor.revealRangeInCenter(match.range);
-          
-          // 하이라이트 적용
-          highlightFindResult(match.range);
-          
-          // 토스트 알림 표시
-          showToastMessage('info', `"${findText}" 찾음 (처음으로 돌아옴)`);
-          
-          return true;
-        } else {
-          // 결과가 없음
-          showToastMessage('warning', `"${findText}" 찾을 수 없음`);
-          
-          return false;
-        }
+        // 결과가 없음 (이 경우는 발생하지 않아야 함)
+        showToastMessage('warning', `'${findText}'에 대한 검색 결과가 없습니다.`);
+        return false;
       }
     } catch (error) {
       console.error('다음 찾기 오류:', error);
+      // 오류 메시지를 더 자세히 표시
+      if (error instanceof Error) {
+        showToastMessage('error', `검색 중 오류가 발생했습니다: ${error.message}`);
+      } else {
+        showToastMessage('error', '검색 중 알 수 없는 오류가 발생했습니다.');
+      }
       return false;
     }
   }, [findText, useRegex, matchCase, wholeWord, highlightFindResult, showToastMessage]);
   
   // 이전 찾기
   const findPrevious = useCallback(() => {
-    if (!editorRef.current || !findText) return;
+    if (!editorRef.current || !findText) return false;
     
     const editor = editorRef.current;
     const model = editor.getModel();
-    if (!model) return;
+    if (!model) return false;
     
     try {
       // 현재 선택 영역 가져오기
@@ -562,92 +568,154 @@ export const useEditor = () => {
         startPosition = editor.getPosition();
       }
       
-      // 현재 위치부터 문서 시작까지 역방향 검색
-      const matches = model.findPreviousMatches(
+      // 전체 문서에서 모든 일치 항목 찾기
+      const allMatches = model.findMatches(
         findText,
-        false, // searchOnlyEditableRange
+        true, // searchOnlyEditableRange
         useRegex,
         matchCase,
         wholeWord ? ' \t\n,.;:\'"`~!@#$%^&*()-=+[]{}\\|/?<>' : null,
         false, // captureMatches
-        1, // 최대 1개 결과
-        startPosition
+        1000, // 최대 1000개 결과
+        null // 전체 문서 검색
       );
       
-      // 결과가 있으면 해당 위치로 이동
-      if (matches && matches.length > 0) {
-        const match = matches[0];
+      if (allMatches.length === 0) {
+        // 일치하는 항목이 없음
+        showToastMessage('warning', `'${findText}'에 대한 검색 결과가 없습니다.`);
+        return false;
+      }
+      
+      // 현재 위치보다 이전에 있는 일치 항목 찾기
+      let prevMatch = null;
+      let currentMatchIndex = -1;
+      
+      // 현재 선택된 항목이 있는 경우, 그 인덱스 찾기
+      if (selection && !selection.isEmpty()) {
+        for (let i = 0; i < allMatches.length; i++) {
+          const match = allMatches[i];
+          if (match.range.startLineNumber === selection.startLineNumber && 
+              match.range.startColumn === selection.startColumn) {
+            currentMatchIndex = i;
+            break;
+          }
+        }
+      }
+      
+      if (currentMatchIndex > 0) {
+        // 현재 선택된 항목이 있고, 그 이전 항목이 있는 경우
+        prevMatch = allMatches[currentMatchIndex - 1];
+      } else if (currentMatchIndex === 0) {
+        // 현재 선택된 항목이 첫 번째 항목인 경우, 마지막 항목으로 이동
+        prevMatch = allMatches[allMatches.length - 1];
+        showToastMessage('info', '문서의 끝에서부터 다시 검색합니다.');
+      } else {
+        // 현재 선택된 항목이 없는 경우, 현재 위치보다 이전에 있는 항목 찾기
+        const cursorLine = startPosition.lineNumber;
+        const cursorColumn = startPosition.column;
         
-        // 선택 영역 설정
-        editor.setSelection(match.range);
+        // 현재 위치보다 이전에 있는 항목 중 가장 가까운 항목 찾기
+        for (let i = allMatches.length - 1; i >= 0; i--) {
+          const match = allMatches[i];
+          if (match.range.startLineNumber < cursorLine || 
+              (match.range.startLineNumber === cursorLine && match.range.startColumn < cursorColumn)) {
+            prevMatch = match;
+            break;
+          }
+        }
         
-        // 해당 위치로 스크롤
-        editor.revealRangeInCenter(match.range);
-        
-        // 하이라이트 적용
-        highlightFindResult(match.range);
-        
-        // 토스트 알림 표시
-        showToastMessage('info', `"${findText}" 찾음`);
-        
+        // 이전 항목이 없으면 마지막 항목으로 이동
+        if (!prevMatch && allMatches.length > 0) {
+          prevMatch = allMatches[allMatches.length - 1];
+          showToastMessage('info', '문서의 끝에서부터 다시 검색합니다.');
+        }
+      }
+      
+      if (prevMatch) {
+        // 하이라이트 적용 (이 함수가 선택 영역 설정과 스크롤도 처리함)
+        highlightFindResult(prevMatch.range);
         return true;
       } else {
-        // 문서 끝부터 현재 위치까지 역방향 검색
-        const lastLine = model.getLineCount();
-        const lastLineLength = model.getLineMaxColumn(lastLine);
-        const lastPosition = { lineNumber: lastLine, column: lastLineLength };
-        
-        const matchesFromEnd = model.findPreviousMatches(
-          findText,
-          false,
-          useRegex,
-          matchCase,
-          wholeWord ? ' \t\n,.;:\'"`~!@#$%^&*()-=+[]{}\\|/?<>' : null,
-          false,
-          1,
-          lastPosition
-        );
-        
-        if (matchesFromEnd && matchesFromEnd.length > 0) {
-          const match = matchesFromEnd[0];
-          
-          // 선택 영역 설정
-          editor.setSelection(match.range);
-          
-          // 해당 위치로 스크롤
-          editor.revealRangeInCenter(match.range);
-          
-          // 하이라이트 적용
-          highlightFindResult(match.range);
-          
-          // 토스트 알림 표시
-          showToastMessage('info', `"${findText}" 찾음 (끝으로 돌아옴)`);
-          
-          return true;
-        } else {
-          // 결과가 없음
-          showToastMessage('warning', `"${findText}" 찾을 수 없음`);
-          
-          return false;
-        }
+        // 결과가 없음 (이 경우는 발생하지 않아야 함)
+        showToastMessage('warning', `'${findText}'에 대한 검색 결과가 없습니다.`);
+        return false;
       }
     } catch (error) {
       console.error('이전 찾기 오류:', error);
+      // 오류 메시지를 더 자세히 표시
+      if (error instanceof Error) {
+        showToastMessage('error', `검색 중 오류가 발생했습니다: ${error.message}`);
+      } else {
+        showToastMessage('error', '검색 중 알 수 없는 오류가 발생했습니다.');
+      }
       return false;
     }
   }, [findText, useRegex, matchCase, wholeWord, highlightFindResult, showToastMessage]);
   
+  // 찾기/바꾸기 토글
+  const toggleFindReplace = useCallback(() => {
+    setFindReplaceVisible(prev => !prev);
+    
+    // 찾기/바꾸기 패널이 열릴 때 에디터에서 선택된 텍스트가 있으면 찾기 필드에 설정
+    if (!findReplaceVisible && editorRef.current) {
+      const selection = editorRef.current.getSelection();
+      const selectedText = editorRef.current.getModel().getValueInRange(selection);
+      
+      if (selectedText) {
+        setFindText(selectedText);
+        
+        // 약간의 지연 후 자동으로 검색 수행 (UI가 업데이트된 후)
+        setTimeout(() => {
+          if (editorRef.current) {
+            // 다음 찾기 실행
+            findNext();
+            
+            // 에디터에 포커스 유지
+            editorRef.current.focus();
+          }
+        }, 100);
+      } else if (findText) {
+        // 이미 찾기 텍스트가 있으면 자동으로 검색 수행
+        setTimeout(() => {
+          if (editorRef.current) {
+            findNext();
+            editorRef.current.focus();
+          }
+        }, 100);
+      }
+    }
+  }, [findReplaceVisible, findText, findNext]);
+  
+  // 실행 취소
+  const undo = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.trigger('keyboard', 'undo', null);
+    }
+  }, []);
+  
+  // 다시 실행
+  const redo = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.trigger('keyboard', 'redo', null);
+    }
+  }, []);
+  
   // 바꾸기
   const replace = useCallback(() => {
-    if (!editorRef.current || !findText) return;
+    if (!editorRef.current || !findText) return false;
     
     const editor = editorRef.current;
     const model = editor.getModel();
-    if (!model) return;
+    if (!model) return false;
     
     try {
       // 현재 선택 영역 가져오기
       const selection = editor.getSelection();
+      if (!selection || selection.isEmpty()) {
+        // 선택된 영역이 없으면 먼저 다음 찾기 실행
+        findNext();
+        return false;
+      }
       
       // 선택된 텍스트 가져오기
       const selectedText = model.getValueInRange(selection);
@@ -657,8 +725,14 @@ export const useEditor = () => {
       
       if (useRegex) {
         // 정규식 검색
-        const regex = new RegExp(`^${findText}$`, matchCase ? '' : 'i');
-        isMatch = regex.test(selectedText);
+        try {
+          const regex = new RegExp(`^${findText}$`, matchCase ? '' : 'i');
+          isMatch = regex.test(selectedText);
+        } catch (regexError) {
+          console.error('정규식 오류:', regexError);
+          showToastMessage('error', '정규식 오류: ' + (regexError instanceof Error ? regexError.message : String(regexError)));
+          return false;
+        }
       } else if (matchCase) {
         // 대소문자 구분 검색
         isMatch = selectedText === findText;
@@ -674,8 +748,13 @@ export const useEditor = () => {
       
       // 일치하면 바꾸기 수행
       if (isMatch) {
-        // 바꾸기 전 범위 저장
-        const replaceRange = selection.clone();
+        // 바꾸기 전 범위 저장 (selection.clone 대신 직접 객체 생성)
+        const replaceRange = {
+          startLineNumber: selection.startLineNumber,
+          startColumn: selection.startColumn,
+          endLineNumber: selection.endLineNumber,
+          endColumn: selection.endColumn
+        };
         
         // 바꾸기 수행
         editor.executeEdits('replace', [{
@@ -695,31 +774,40 @@ export const useEditor = () => {
         // 하이라이트 적용
         highlightReplaceResult(newRange);
         
-        // 토스트 알림 표시
-        showToastMessage('success', `"${findText}"를 "${replaceText}"로 변경`);
+        // 바꾸기 성공 메시지
+        showToastMessage('success', '텍스트가 성공적으로 바뀌었습니다.');
         
-        // 다음 찾기 실행
-        findNext();
+        // 다음 찾기 실행 (약간 지연 후 실행하여 하이라이트가 보이도록)
+        setTimeout(() => {
+          findNext();
+        }, 100);
         
         return true;
       } else {
         // 선택된 텍스트가 검색어와 일치하지 않으면 다음 찾기 실행
+        showToastMessage('info', '선택된 텍스트가 검색어와 일치하지 않습니다. 다음 항목을 찾습니다.');
         findNext();
         return false;
       }
     } catch (error) {
       console.error('바꾸기 오류:', error);
+      // 오류 메시지를 더 자세히 표시
+      if (error instanceof Error) {
+        showToastMessage('error', `바꾸기 중 오류가 발생했습니다: ${error.message}`);
+      } else {
+        showToastMessage('error', '바꾸기 중 알 수 없는 오류가 발생했습니다.');
+      }
       return false;
     }
   }, [findText, replaceText, useRegex, matchCase, wholeWord, findNext, highlightReplaceResult, showToastMessage]);
   
   // 모두 바꾸기
   const replaceAll = useCallback(() => {
-    if (!editorRef.current || !findText) return;
+    if (!editorRef.current || !findText) return 0;
     
     const editor = editorRef.current;
     const model = editor.getModel();
-    if (!model) return;
+    if (!model) return 0;
     
     try {
       // 모든 일치 항목 찾기
@@ -736,8 +824,7 @@ export const useEditor = () => {
       
       if (matches.length === 0) {
         // 일치하는 항목이 없음
-        showToastMessage('warning', `"${findText}" 찾을 수 없음`);
-        
+        showToastMessage('warning', `'${findText}'에 대한 검색 결과가 없습니다.`);
         return 0;
       }
       
@@ -766,20 +853,37 @@ export const useEditor = () => {
         forceMoveMarkers: true
       }));
       
-      editor.executeEdits('replaceAll', edits);
-      editor.pushUndoStop();
-      
-      // 바꾼 결과 하이라이트
-      if (replaceRanges.length > 0) {
-        highlightAllReplaceResults(replaceRanges);
+      // 에디터 편집 실행
+      try {
+        editor.executeEdits('replaceAll', edits);
+        editor.pushUndoStop();
+        
+        // 바꾼 결과 하이라이트
+        if (replaceRanges.length > 0) {
+          // 약간의 지연 후 하이라이트 적용 (에디터 업데이트 후)
+          setTimeout(() => {
+            highlightAllReplaceResults(replaceRanges);
+          }, 10);
+        }
+        
+        // 바꾸기 완료 메시지
+        const count = matches.length;
+        showToastMessage('success', `${count}개의 항목이 성공적으로 바뀌었습니다.`);
+        
+        return count;
+      } catch (editError) {
+        console.error('에디터 편집 오류:', editError);
+        showToastMessage('error', '바꾸기 작업 중 오류가 발생했습니다.');
+        return 0;
       }
-      
-      // 토스트 알림 표시
-      showToastMessage('success', `${matches.length}개의 "${findText}"를 "${replaceText}"로 변경`);
-      
-      return matches.length;
     } catch (error) {
       console.error('모두 바꾸기 오류:', error);
+      // 오류 메시지를 더 자세히 표시
+      if (error instanceof Error) {
+        showToastMessage('error', `모두 바꾸기 중 오류가 발생했습니다: ${error.message}`);
+      } else {
+        showToastMessage('error', '모두 바꾸기 중 알 수 없는 오류가 발생했습니다.');
+      }
       return 0;
     }
   }, [findText, replaceText, useRegex, matchCase, wholeWord, highlightAllReplaceResults, showToastMessage]);
