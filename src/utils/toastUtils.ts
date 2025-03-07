@@ -4,14 +4,16 @@ import { Toast } from '../types';
 export const createToast = (
   message: string, 
   type: 'success' | 'error' | 'warning' | 'info' = 'info', 
-  duration: number = 3000
+  duration: number = 3000,
+  toastId?: string
 ): Toast => {
   return {
     id: Date.now(),
     message,
     type,
     duration,
-    removing: false
+    removing: false,
+    toastId
   };
 };
 
@@ -20,9 +22,10 @@ export const addToast = (
   toasts: Toast[], 
   message: string, 
   type: 'success' | 'error' | 'warning' | 'info' = 'info', 
-  duration: number = 3000
+  duration: number = 3000,
+  toastId?: string
 ): Toast[] => {
-  const newToast = createToast(message, type, duration);
+  const newToast = createToast(message, type, duration, toastId);
   return [...toasts, newToast];
 };
 

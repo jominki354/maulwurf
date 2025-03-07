@@ -1110,6 +1110,34 @@ body {
   animation: toast-slide-out 0.3s ease-in forwards;
 }
 
+/* 토스트 메시지 하이라이트 효과 */
+.toast-highlight {
+  animation: toast-highlight 0.5s ease-in-out;
+}
+
+@keyframes toast-highlight {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgba(255, 255, 255, 0.2);
+  }
+  25% {
+    transform: scale(1.03);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+  }
+  75% {
+    transform: scale(1.03);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgba(255, 255, 255, 0.2);
+  }
+}
+
 /* 상태 바 */
 .status-bar {
   height: var(--status-bar-height);
@@ -1522,6 +1550,22 @@ body {
   width: 420px;
 }
 
+/* 찾기/바꾸기 헤더 */
+.find-replace-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #3C3C3C;
+}
+
+.find-replace-title {
+  font-weight: bold;
+  color: #CCCCCC;
+  font-size: 14px;
+}
+
 .find-replace-group {
   display: grid;
   grid-template-columns: 1fr 90px 90px;
@@ -1547,18 +1591,22 @@ body {
 
 .find-button {
   padding: 4px 8px;
-  background-color: #0E639C;
-  color: white;
-  border: none;
+  background-color: #2C2C2C;
+  color: #CCCCCC;
+  border: 1px solid #3C3C3C;
   border-radius: 3px;
+  margin-left: 5px;
   cursor: pointer;
   font-size: 12px;
-  height: 28px;
-  text-align: center;
-  width: 100%;
+  transition: background-color 0.2s, color 0.2s;
 }
 
 .find-button:hover {
+  background-color: #0E639C;
+  color: white;
+}
+
+.find-button:active {
   background-color: #1177BB;
 }
 
@@ -1619,17 +1667,19 @@ body {
 
 /* 디버그 콘솔 */
 .debug-console {
-  position: fixed;
+  position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
   height: 300px;
-  background-color: rgba(30, 30, 30, 0.95);
+  background-color: var(--bg-darker);
   border-top: 1px solid var(--border-color);
-  z-index: 9999;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  font-family: var(--font-family-ui);
+  color: var(--text-color);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.2);
 }
 
 .debug-console-header {
@@ -1643,7 +1693,6 @@ body {
 
 .debug-console-header h3 {
   margin: 0;
-  color: var(--text-color);
   font-size: 14px;
   font-weight: 600;
 }
@@ -1651,6 +1700,26 @@ body {
 .debug-console-controls {
   display: flex;
   gap: 8px;
+  align-items: center;
+}
+
+.debug-console-search {
+  background-color: var(--bg-lighter);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 12px;
+  width: 200px;
+}
+
+.debug-console-filter {
+  background-color: var(--bg-lighter);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 12px;
 }
 
 .debug-console-controls button {
@@ -1677,6 +1746,40 @@ body {
   color: var(--text-color);
 }
 
+.debug-console-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: var(--bg-darker);
+  border-top: 1px solid var(--border-color);
+  font-size: 12px;
+}
+
+.debug-console-status {
+  color: var(--text-secondary);
+}
+
+.debug-console-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.debug-console-action {
+  background-color: var(--bg-lighter);
+  color: var(--text-color);
+  border: none;
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background-color 0.2s;
+}
+
+.debug-console-action:hover {
+  background-color: var(--primary-color);
+}
+
 .log-entry {
   margin-bottom: 4px;
   line-height: 1.5;
@@ -1685,17 +1788,21 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 2px;
 }
 
 .log-timestamp {
   color: var(--text-secondary);
   font-size: 12px;
   min-width: 80px;
+  user-select: none;
 }
 
 .log-level {
   font-weight: bold;
   min-width: 60px;
+  user-select: none;
 }
 
 .log-level-info {
@@ -1712,6 +1819,23 @@ body {
 
 .log-level-success {
   color: #6ccb5f;
+}
+
+.log-level-debug {
+  color: #aaaaaa;
+}
+
+.log-level-terminal {
+  color: #ffffff;
+  font-family: monospace;
+}
+
+.log-level-log {
+  color: #dddddd;
+}
+
+.log-level-history {
+  color: #bb88ff;
 }
 
 .log-message {
@@ -1780,26 +1904,43 @@ body {
 
 /* 찾기/바꾸기 결과 하이라이트 */
 .find-result-highlight {
-  background-color: rgba(255, 255, 0, 0.3);
+  background-color: rgba(255, 200, 0, 0.5);
+  border: 1px solid rgba(255, 200, 0, 0.8);
   border-radius: 2px;
-  animation: highlight-fade 3s ease-out;
+  box-shadow: 0 0 3px rgba(255, 200, 0, 0.5);
 }
 
 .replace-result-highlight {
-  background-color: rgba(0, 255, 0, 0.3);
+  background-color: rgba(0, 255, 128, 0.5);
+  border: 1px solid rgba(0, 255, 128, 0.8);
   border-radius: 2px;
-  animation: highlight-fade 3s ease-out;
+  box-shadow: 0 0 3px rgba(0, 255, 128, 0.5);
 }
 
 /* 라인 하이라이트 */
 .find-line-highlight {
-  background-color: rgba(255, 255, 0, 0.1);
-  animation: highlight-fade 3s ease-out;
+  background-color: rgba(255, 200, 0, 0.15);
+  border-left: 2px solid rgba(255, 200, 0, 0.8);
 }
 
 .replace-line-highlight {
-  background-color: rgba(0, 255, 0, 0.1);
-  animation: highlight-fade 3s ease-out;
+  background-color: rgba(0, 255, 128, 0.15);
+  border-left: 2px solid rgba(0, 255, 128, 0.8);
+}
+
+/* 찾기 결과 카운트 */
+.find-results-count {
+  display: inline-block;
+  padding: 2px 8px;
+  background-color: #0E639C;
+  color: white;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.find-replace-header .find-results-count {
+  margin-left: 0;
 }
 
 @keyframes highlight-fade {
