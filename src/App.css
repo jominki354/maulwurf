@@ -1479,57 +1479,62 @@ body {
   --primary-hover: #106EBE;
 }
 
-/* 코드 프리뷰 영역 */
-.monaco-editor {
-  padding: 0 !important;
-  margin: 0 !important;
-}
-
-.monaco-editor .margin {
-  background-color: #1E1E1E !important;
-}
-
-.monaco-editor .monaco-editor-background {
-  background-color: #1E1E1E !important;
-}
-
-.monaco-editor .line-numbers {
-  color: #858585 !important;
-}
-
-.monaco-editor .current-line {
-  border: none !important;
-  background-color: #2A2D2E !important;
-}
-
-.monaco-editor .view-overlays .current-line {
-  border: none !important;
-  background-color: #2A2D2E !important;
-}
-
-/* G코드 툴팁 스타일 */
-.monaco-hover {
-  background-color: #252525 !important;
-  border: 1px solid #444 !important;
-  border-radius: 4px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
-  padding: 8px !important;
-  max-width: 400px !important;
-}
-
-.monaco-hover .markdown-hover p {
-  margin: 4px 0 !important;
+/* Monaco 에디터 툴팁 스타일 커스터마이징 */
+.monaco-editor .monaco-hover {
   font-family: var(--font-family-ui) !important;
+  font-size: 12px !important;
+  border-radius: 4px !important;
+  border: 1px solid var(--border-color) !important;
+  background-color: var(--bg-darker) !important;
+  box-shadow: var(--shadow) !important;
+  padding: 6px 8px !important;
+  max-width: 300px !important;
 }
 
-.monaco-hover .markdown-hover strong {
-  color: #4fc3f7 !important;
-  font-weight: bold !important;
+.monaco-editor .monaco-hover p {
+  margin: 4px 0 !important;
+  line-height: 1.4 !important;
 }
 
-.monaco-hover .markdown-hover hr {
-  margin: 6px 0 !important;
-  border-color: #444 !important;
+.monaco-editor .monaco-hover code {
+  font-family: var(--font-family-code) !important;
+  font-size: 11px !important;
+  background-color: rgba(0, 0, 0, 0.2) !important;
+  padding: 1px 3px !important;
+  border-radius: 3px !important;
+}
+
+.monaco-editor .monaco-hover hr {
+  margin: 4px 0 !important;
+  border-color: var(--border-color) !important;
+}
+
+.monaco-editor .monaco-hover strong {
+  color: var(--primary-color) !important;
+  font-weight: 600 !important;
+}
+
+/* 툴팁 화살표 스타일 */
+.monaco-editor .monaco-hover .monaco-hover-content:before {
+  border-width: 5px !important;
+}
+
+/* 툴팁 내용 간격 조정 */
+.monaco-editor .monaco-hover .markdown-hover .hover-contents {
+  padding: 0 !important;
+}
+
+/* 툴팁 마크다운 스타일 */
+.monaco-editor .monaco-hover .markdown-hover .hover-contents .codicon {
+  display: none !important;
+}
+
+/* 툴팁 내 마크다운 코드 블록 스타일 */
+.monaco-editor .monaco-hover .markdown-hover .hover-contents pre {
+  background-color: rgba(0, 0, 0, 0.2) !important;
+  padding: 4px !important;
+  border-radius: 3px !important;
+  margin: 4px 0 !important;
 }
 
 /* 찾기/바꾸기 패널 */
@@ -1840,31 +1845,6 @@ body {
 
 .log-message {
   flex: 1;
-}
-
-/* G코드 툴팁 스타일 */
-.monaco-hover {
-  background-color: #252525 !important;
-  border: 1px solid #444 !important;
-  border-radius: 4px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
-  padding: 8px !important;
-  max-width: 400px !important;
-}
-
-.monaco-hover .markdown-hover p {
-  margin: 4px 0 !important;
-  font-family: var(--font-family-ui) !important;
-}
-
-.monaco-hover .markdown-hover strong {
-  color: #4fc3f7 !important;
-  font-weight: bold !important;
-}
-
-.monaco-hover .markdown-hover hr {
-  margin: 6px 0 !important;
-  border-color: #444 !important;
 }
 
 /* 찾기/바꾸기 패널 스타일 수정 */

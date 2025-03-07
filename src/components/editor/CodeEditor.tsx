@@ -1,7 +1,7 @@
 import React, { useRef, useCallback, useEffect } from 'react';
 import Editor, { Monaco } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';
-import { findGCodeDefinition } from '../../utils/gcodeDefinitions';
+import { findGCodeDefinition, parseGCodeLine } from '../../utils/gcodeDefinitions';
 
 interface CodeEditorProps {
   value: string;
@@ -208,25 +208,33 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
         // 현재 라인의 텍스트 가져오기
         const lineContent = model.getLineContent(position.lineNumber);
         
-        // G코드 또는 M코드 패턴 찾기
-        const gcodePattern = /\b([GM]\d+)\b/g;
+        // 현재 위치에 있는 코드 찾기
+        let currentCode = null;
+        let codeRange = null;
+        
+        // 1. 정확한 G코드 또는 M코드 패턴 찾기 (G0, G1, M3 등)
+        const gcodePattern = /([GM]\d+)/gi;
         const matches = [...lineContent.matchAll(gcodePattern)];
         
-        // 현재 위치에 있는 G코드 또는 M코드 찾기
-        let currentCode = null;
         for (const match of matches) {
           const start = match.index || 0;
           const end = start + match[0].length;
           
           if (position.column >= start + 1 && position.column <= end + 1) {
             currentCode = match[0];
+            codeRange = new monaco.Range(
+              position.lineNumber,
+              start + 1,
+              position.lineNumber,
+              end + 1
+            );
             break;
           }
         }
         
-        // 좌표 또는 파라미터 패턴 찾기 (X, Y, Z, I, J, K, F, S, P, R, T)
+        // 2. 좌표 또는 파라미터 패턴 찾기 (X, Y, Z, I, J, K, F, S, P, R, T)
         if (!currentCode) {
-          const paramPattern = /\b([XYZIJKFSPRT]-?\d*\.?\d+)\b/g;
+          const paramPattern = /([XYZIJKFSPRT])-?\d*\.?\d+/gi;
           const paramMatches = [...lineContent.matchAll(paramPattern)];
           
           for (const match of paramMatches) {
@@ -236,7 +244,41 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
             if (position.column >= start + 1 && position.column <= end + 1) {
               // 파라미터 코드만 추출 (숫자 제외)
               currentCode = match[0].charAt(0);
+              codeRange = new monaco.Range(
+                position.lineNumber,
+                start + 1,
+                position.lineNumber,
+                start + 2 // 첫 글자만 (X, Y, Z 등)
+              );
               break;
+            }
+          }
+        }
+        
+        // 3. 한 줄로 이어진 G코드 처리 (G90G55X121.Y-16.75S4000M3 등)
+        if (!currentCode && lineContent.match(/[GM]\d+[GM\d\.XYZIJKFSPRT\-]+/i)) {
+          // 현재 커서 위치에서 가장 가까운 코드 찾기
+          const codes = parseGCodeLine(lineContent);
+          
+          // 각 코드의 위치 찾기
+          for (const code of codes) {
+            const codeIndex = lineContent.toUpperCase().indexOf(code.toUpperCase());
+            if (codeIndex >= 0) {
+              const start = codeIndex;
+              const end = start + code.length;
+              
+              // 커서가 코드 근처에 있는지 확인 (약간의 여유 허용)
+              const cursorPos = position.column - 1;
+              if (Math.abs(cursorPos - start) <= 3 || (cursorPos >= start && cursorPos <= end)) {
+                currentCode = code;
+                codeRange = new monaco.Range(
+                  position.lineNumber,
+                  start + 1,
+                  position.lineNumber,
+                  end + 1
+                );
+                break;
+              }
             }
           }
         }
@@ -246,15 +288,19 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
           const definition = findGCodeDefinition(currentCode);
           
           if (definition) {
+            // 브랜드 정보가 있으면 표시
+            const brandInfo = definition.brand ? ` (${definition.brand})` : '';
+            
+            // 간소화된 툴팁 레이아웃
             return {
-              range: new monaco.Range(
+              range: codeRange || new monaco.Range(
                 position.lineNumber,
                 position.column - (word.word.length / 2),
                 position.lineNumber,
                 position.column + (word.word.length / 2)
               ),
               contents: [
-                { value: `**${definition.code}**: ${definition.description}` },
+                { value: `**${definition.code}${brandInfo}**: ${definition.description}` },
                 { value: definition.details || '' }
               ]
             };
