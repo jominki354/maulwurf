@@ -1,6 +1,6 @@
 {
   "name": "maulwurf",
-  "version": "0.2.0",
+  "version": "0.3.0-dev",
   "description": "G코드 에디터 애플리케이션",
   "type": "module",
   "scripts": {
