@@ -8,11 +8,14 @@ interface FolderItemProps {
   level: number;
   selectedFilePath: string | null;
   onFileSelect: (filePath: string) => void;
+  onFileClick?: (filePath: string) => void;
   onFolderSelect: (path: string) => void;
+  onFolderClick?: (path: string) => void;
   onCut?: (path: string) => void;
   onCopy?: (path: string) => void;
   onRename?: (path: string) => void;
   onDelete?: (path: string) => void;
+  onPaste?: (targetFolderPath: string) => void;
 }
 
 const FolderItem: React.FC<FolderItemProps> = ({
@@ -20,11 +23,14 @@ const FolderItem: React.FC<FolderItemProps> = ({
   level,
   selectedFilePath,
   onFileSelect,
+  onFileClick,
   onFolderSelect,
+  onFolderClick,
   onCut,
   onCopy,
   onRename,
-  onDelete
+  onDelete,
+  onPaste
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [contextMenu, setContextMenu] = useState({
@@ -38,8 +44,17 @@ const FolderItem: React.FC<FolderItemProps> = ({
     setIsExpanded(!isExpanded);
   };
   
+  // 폴더 클릭 핸들러
+  const handleFolderClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onFolderClick && item.path) {
+      onFolderClick(item.path);
+    }
+  };
+  
   // 폴더 더블클릭 핸들러
-  const handleFolderDoubleClick = () => {
+  const handleFolderDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (item.path) {
       onFolderSelect(item.path);
     }
@@ -48,7 +63,17 @@ const FolderItem: React.FC<FolderItemProps> = ({
   // 파일 더블클릭 핸들러
   const handleFileDoubleClick = () => {
     if (item.path) {
+      // 더블 클릭 시에만 파일을 열도록 함
       onFileSelect(item.path);
+    }
+  };
+
+  // 파일 선택 핸들러 (단일 클릭)
+  const handleFileClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // 단일 클릭은 파일 선택만 함 (파일을 열지 않음)
+    if (item.path && onFileClick) {
+      onFileClick(item.path);
     }
   };
 
@@ -99,9 +124,25 @@ const FolderItem: React.FC<FolderItemProps> = ({
       onDelete(item.path);
     }
   };
+
+  // 붙여넣기 핸들러
+  const handlePaste = () => {
+    if (onPaste && item.path) {
+      // 폴더인 경우 해당 폴더에 붙여넣기
+      if (item.children) {
+        onPaste(item.path);
+      } 
+      // 파일인 경우 파일이 위치한 폴더에 붙여넣기
+      else {
+        const pathParts = item.path.split(/[/\\]/);
+        pathParts.pop(); // 파일명 제거
+        const parentPath = pathParts.join('/');
+        onPaste(parentPath);
+      }
+    }
+  };
   
   const isFolder = !!item.children;
-  const isSelected = selectedFilePath === item.path;
   
   const paddingLeft = level * 16 + 8;
   
@@ -109,9 +150,9 @@ const FolderItem: React.FC<FolderItemProps> = ({
     return (
       <div>
         <div 
-          className="folder-item" 
+          className={`folder-item ${selectedFilePath === item.path ? 'selected' : ''}`}
           style={{ paddingLeft }}
-          onClick={toggleFolder}
+          onClick={handleFolderClick}
           onDoubleClick={handleFolderDoubleClick}
           onContextMenu={handleContextMenu}
         >
@@ -132,6 +173,7 @@ const FolderItem: React.FC<FolderItemProps> = ({
                 onCopy={onCopy}
                 onRename={onRename}
                 onDelete={onDelete}
+                onPaste={onPaste}
               />
             ))}
           </div>
@@ -144,6 +186,7 @@ const FolderItem: React.FC<FolderItemProps> = ({
             onClose={closeContextMenu}
             onCut={handleCut}
             onCopy={handleCopy}
+            onPaste={onPaste ? handlePaste : undefined}
             onRename={handleRename}
             onDelete={handleDelete}
             isFolder={true}
@@ -155,10 +198,14 @@ const FolderItem: React.FC<FolderItemProps> = ({
     return (
       <>
         <div 
-          className={`file-item ${isSelected ? 'selected' : ''}`}
+          className={`file-item ${selectedFilePath === item.path ? 'selected' : ''}`}
           style={{ paddingLeft }}
-          onClick={() => onFileSelect(item.path)}
-          onDoubleClick={handleFileDoubleClick}
+          onClick={handleFileClick}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            // 더블 클릭 시 파일 열기
+            handleFileDoubleClick();
+          }}
           onContextMenu={handleContextMenu}
         >
           <div className={`file-icon ${getFileIconClass(item.name)}`}></div>
@@ -172,6 +219,7 @@ const FolderItem: React.FC<FolderItemProps> = ({
             onClose={closeContextMenu}
             onCut={handleCut}
             onCopy={handleCopy}
+            onPaste={onPaste ? handlePaste : undefined}
             onRename={handleRename}
             onDelete={handleDelete}
             isFolder={false}

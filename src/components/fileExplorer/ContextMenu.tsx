@@ -8,9 +8,11 @@ interface ContextMenuProps {
   onClose: () => void;
   onCut: () => void;
   onCopy: () => void;
+  onPaste?: () => void;
   onRename: () => void;
   onDelete: () => void;
   isFolder: boolean;
+  emptyAreaMenu?: boolean;
 }
 
 const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -20,9 +22,11 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   onClose,
   onCut,
   onCopy,
+  onPaste,
   onRename,
   onDelete,
-  isFolder
+  isFolder,
+  emptyAreaMenu
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -78,18 +82,31 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
       }}
     >
       <ul>
-        <li onClick={() => { onCut(); onClose(); }}>
-          <span className="context-menu-icon">✂️</span> 잘라내기
-        </li>
-        <li onClick={() => { onCopy(); onClose(); }}>
-          <span className="context-menu-icon">📋</span> 복사
-        </li>
-        <li onClick={() => { onRename(); onClose(); }}>
-          <span className="context-menu-icon">✏️</span> 이름 변경
-        </li>
-        <li onClick={() => { onDelete(); onClose(); }} className="danger">
-          <span className="context-menu-icon">🗑️</span> 삭제
-        </li>
+        {!emptyAreaMenu && (
+          <>
+            <li onClick={() => { onCut(); onClose(); }}>
+              <span className="context-menu-icon">✂️</span> 잘라내기
+            </li>
+            <li onClick={() => { onCopy(); onClose(); }}>
+              <span className="context-menu-icon">📋</span> 복사
+            </li>
+          </>
+        )}
+        {onPaste && (
+          <li onClick={() => { onPaste(); onClose(); }}>
+            <span className="context-menu-icon">📌</span> 붙여넣기
+          </li>
+        )}
+        {!emptyAreaMenu && (
+          <>
+            <li onClick={() => { onRename(); onClose(); }}>
+              <span className="context-menu-icon">✏️</span> 이름 변경
+            </li>
+            <li onClick={() => { onDelete(); onClose(); }} className="danger">
+              <span className="context-menu-icon">🗑️</span> 삭제
+            </li>
+          </>
+        )}
       </ul>
     </div>
   );
