@@ -1,4 +1,4 @@
-import React, { createContext, useContext, ReactNode } from 'react';
+import React, { createContext, ReactNode } from 'react';
 import { useEditor } from '../hooks/useEditor';
 import { useTabs } from '../hooks/useTabs';
 import { useFileSystem } from '../hooks/useFileSystem';
@@ -8,7 +8,7 @@ import { useToast } from '../hooks/useToast';
 import { useLogging } from '../hooks/useLogging';
 
 // Context 타입 정의
-type AppContextType = {
+export type AppContextType = {
   editor: ReturnType<typeof useEditor>;
   tabs: ReturnType<typeof useTabs>;
   fileSystem: ReturnType<typeof useFileSystem>;
@@ -19,10 +19,11 @@ type AppContextType = {
 };
 
 // Context 생성
-const AppContext = createContext<AppContextType | undefined>(undefined);
+export const AppContext = createContext<AppContextType | undefined>(undefined);
+AppContext.displayName = 'AppContext';
 
 // Context Provider 컴포넌트
-export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export default function AppProvider({ children }: { children: ReactNode }) {
   const editor = useEditor();
   const tabs = useTabs();
   const fileSystem = useFileSystem();
@@ -46,13 +47,4 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       {children}
     </AppContext.Provider>
   );
-};
-
-// Context 사용을 위한 커스텀 훅
-export const useApp = () => {
-  const context = useContext(AppContext);
-  if (context === undefined) {
-    throw new Error('useApp must be used within an AppProvider');
-  }
-  return context;
-}; 
+} 
