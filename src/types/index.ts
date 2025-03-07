@@ -5,6 +5,7 @@ export interface Toast {
   type: 'success' | 'error' | 'warning' | 'info';
   duration?: number;
   removing?: boolean;
+  toastId?: string; // 토스트 요소의 HTML ID
 }
 
 // 로그 메시지 인터페이스

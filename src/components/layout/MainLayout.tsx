@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
-import { useApp } from '../../contexts/AppContext';
+import { useApp } from '../../hooks/useApp';
 import CodeEditor from '../editor/CodeEditor';
 import TabBar from '../tabs/TabBar';
 import FileExplorer from '../fileExplorer/FileExplorer';
@@ -27,6 +27,9 @@ const MainLayout: React.FC = () => {
   // 상태 추가
   const [activeBottomTab, setActiveBottomTab] = useState<string>('timeline');
   const [isFirstFileOpen, setIsFirstFileOpen] = useState<boolean>(true);
+  const [debugConsoleSearch, setDebugConsoleSearch] = useState<string>('');
+  const [debugConsoleFilter, setDebugConsoleFilter] = useState<string>('all');
+  const [debugConsoleAutoScroll, setDebugConsoleAutoScroll] = useState<boolean>(true);
 
   // 파일 선택 핸들러
   const handleFileSelect = async (filePath: string) => {
@@ -791,13 +794,12 @@ const MainLayout: React.FC = () => {
     const handleShowToast = (event: CustomEvent) => {
       const { type, message, unique } = event.detail;
       
-      // 고유 ID가 있는 경우 해당 ID로 토스트 표시
-      if (unique && message) {
-        toast.showToast(
-          message, 
-          (type as 'success' | 'error' | 'warning' | 'info') || 'info'
-        );
-      }
+      // 토스트 표시
+      toast.showToast(
+        message, 
+        (type as 'success' | 'error' | 'warning' | 'info') || 'info',
+        'active-toast'
+      );
     };
 
     // 이벤트 리스너 등록
@@ -1119,6 +1121,16 @@ const MainLayout: React.FC = () => {
           {/* 찾기/바꾸기 패널 */}
           {findReplaceVisible && (
             <div className="find-replace-bar">
+              {/* 찾기 결과 카운트 */}
+              <div className="find-replace-header">
+                <span className="find-replace-title">찾기/바꾸기</span>
+                {editor.findResults.total > 0 && (
+                  <span className="find-results-count">
+                    {editor.findResults.current} / {editor.findResults.total}
+                  </span>
+                )}
+              </div>
+              
               <div className="find-replace-group">
                 <input 
                   type="text" 
@@ -1252,18 +1264,103 @@ const MainLayout: React.FC = () => {
           <div className="debug-console-header">
             <h3>디버그 콘솔</h3>
             <div className="debug-console-controls">
+              <input 
+                type="text" 
+                placeholder="로그 검색..." 
+                className="debug-console-search"
+                value={debugConsoleSearch || ''}
+                onChange={(e) => setDebugConsoleSearch(e.target.value)}
+              />
+              <select 
+                className="debug-console-filter"
+                value={debugConsoleFilter || 'all'}
+                onChange={(e) => setDebugConsoleFilter(e.target.value)}
+              >
+                <option value="all">모든 로그</option>
+                <option value="info">정보</option>
+                <option value="warning">경고</option>
+                <option value="error">오류</option>
+                <option value="debug">디버그</option>
+                <option value="success">성공</option>
+                <option value="terminal">터미널</option>
+                <option value="log">콘솔</option>
+                <option value="history">히스토리</option>
+              </select>
               <button onClick={() => logging.clearLogs()}>지우기</button>
               <button onClick={toggleDebugConsole}>닫기</button>
             </div>
           </div>
           <div className="debug-console-content">
-            {logging.logs.map((log, index) => (
-              <div key={index} className={`log-entry log-level-${log.level.toLowerCase()}`}>
-                <span className="log-timestamp">{log.timestamp}</span>
-                <span className="log-level">[{log.level}]</span>
-                <span className="log-message">{log.message}</span>
-              </div>
-            ))}
+            {logging.logs
+              .filter(log => {
+                // 필터링
+                if (debugConsoleFilter && debugConsoleFilter !== 'all') {
+                  if (log.level.toLowerCase() !== debugConsoleFilter.toLowerCase()) {
+                    return false;
+                  }
+                }
+                
+                // 검색
+                if (debugConsoleSearch) {
+                  const searchLower = debugConsoleSearch.toLowerCase();
+                  return (
+                    log.message.toLowerCase().includes(searchLower) ||
+                    log.level.toLowerCase().includes(searchLower) ||
+                    log.timestamp.toLowerCase().includes(searchLower)
+                  );
+                }
+                
+                return true;
+              })
+              .map((log, index) => (
+                <div 
+                  key={index} 
+                  className={`log-entry log-level-${log.level.toLowerCase()}`}
+                  style={logging.getLogLevelStyle(log.level)}
+                >
+                  <span className="log-timestamp">{log.timestamp}</span>
+                  <span className="log-level">[{log.level}]</span>
+                  <span className="log-message">{log.message}</span>
+                </div>
+              ))
+            }
+          </div>
+          <div className="debug-console-footer">
+            <span className="debug-console-status">
+              {logging.logs.length}개의 로그 메시지 
+              {debugConsoleFilter !== 'all' && ` (필터: ${debugConsoleFilter})`}
+              {debugConsoleSearch && ` (검색: "${debugConsoleSearch}")`}
+            </span>
+            <div className="debug-console-actions">
+              <button 
+                className="debug-console-action"
+                onClick={() => {
+                  // 로그 내용을 텍스트 파일로 내보내기
+                  const logText = logging.logs
+                    .map(log => `${log.timestamp} [${log.level}] ${log.message}`)
+                    .join('\n');
+                  
+                  const blob = new Blob([logText], { type: 'text/plain' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `maulwurf-logs-${new Date().toISOString().replace(/:/g, '-')}.txt`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                로그 내보내기
+              </button>
+              <button 
+                className="debug-console-action"
+                onClick={() => {
+                  // 로그 자동 스크롤 토글
+                  setDebugConsoleAutoScroll(!debugConsoleAutoScroll);
+                }}
+              >
+                {debugConsoleAutoScroll ? '자동 스크롤 끄기' : '자동 스크롤 켜기'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1273,6 +1370,7 @@ const MainLayout: React.FC = () => {
         {toast.toasts.map(toastItem => (
           <div 
             key={toastItem.id} 
+            id={toastItem.toastId || `toast-${toastItem.id}`}
             className={`toast-message ${toastItem.type} ${toastItem.removing ? 'removing' : ''}`}
           >
             <div className="toast-content">{toastItem.message}</div>
