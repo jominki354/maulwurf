@@ -35,7 +35,7 @@ function App() {
         }
       }
     };
-
+    
     initApp();
     
     // 전역 오류 핸들러 등록
@@ -44,7 +44,7 @@ function App() {
       await logging.logError(event.error, '전역 오류 발생');
       logging.addToHistory(`앱 오류가 발생했습니다: ${event.error?.message || '알 수 없는 오류'}`);
     };
-
+    
     const handleUnhandledRejection = async (event: PromiseRejectionEvent) => {
       console.error('비동기 작업 오류:', event.reason);
       if (event.reason instanceof Error) {
@@ -53,10 +53,10 @@ function App() {
         await logging.addLog(LogLevel.ERROR, `비동기 작업 오류: ${String(event.reason)}`);
       }
     };
-
+    
     window.addEventListener('error', handleError);
     window.addEventListener('unhandledrejection', handleUnhandledRejection);
-
+    
     return () => {
       window.removeEventListener('error', handleError);
       window.removeEventListener('unhandledrejection', handleUnhandledRejection);
