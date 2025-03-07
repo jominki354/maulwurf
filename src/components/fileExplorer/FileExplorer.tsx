@@ -7,10 +7,14 @@ interface FileExplorerProps {
   folderStructure: any[];
   selectedFilePath: string | null;
   onFileSelect: (filePath: string) => void;
-  onFolderSelect: (path: string) => void;
-  hasParentFolder: boolean;
+  onFolderSelect: (folderPath: string) => void;
   onParentFolderClick: () => void;
+  hasParentFolder: boolean;
   folderPanelWidth: number;
+  onCut?: (path: string) => void;
+  onCopy?: (path: string) => void;
+  onRename?: (path: string) => void;
+  onDelete?: (path: string) => void;
 }
 
 const FileExplorer: React.FC<FileExplorerProps> = ({
@@ -19,14 +23,19 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   selectedFilePath,
   onFileSelect,
   onFolderSelect,
-  hasParentFolder,
   onParentFolderClick,
-  folderPanelWidth
+  hasParentFolder,
+  folderPanelWidth,
+  onCut,
+  onCopy,
+  onRename,
+  onDelete
 }) => {
-  // 폴더 경로 클릭 핸들러
-  const handleFolderPathClick = () => {
-    // 빈 문자열을 전달하여 폴더 선택 다이얼로그 열기
-    onFolderSelect('');
+  const handleFolderPathClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // 현재 폴더 경로를 클립보드에 복사
+    navigator.clipboard.writeText(folderPath);
   };
 
   return (
@@ -52,6 +61,10 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
             selectedFilePath={selectedFilePath}
             onFileSelect={onFileSelect}
             onFolderSelect={onFolderSelect}
+            onCut={onCut}
+            onCopy={onCopy}
+            onRename={onRename}
+            onDelete={onDelete}
           />
         ))}
       </div>

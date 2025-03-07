@@ -31,6 +31,15 @@ const MainLayout: React.FC = () => {
   const [debugConsoleFilter, setDebugConsoleFilter] = useState<string>('all');
   const [debugConsoleAutoScroll, setDebugConsoleAutoScroll] = useState<boolean>(true);
 
+  // 클립보드 상태 관리
+  const [clipboard, setClipboard] = useState<{
+    action: 'cut' | 'copy' | null;
+    path: string | null;
+  }>({
+    action: null,
+    path: null
+  });
+
   // 파일 선택 핸들러
   const handleFileSelect = async (filePath: string) => {
     try {
@@ -66,6 +75,23 @@ const MainLayout: React.FC = () => {
         path: filePath,
         content: content
       });
+      
+      // 파일 열기 스냅샷 생성
+      // 해당 파일에 대한 스냅샷이 없는 경우에만 첫 스냅샷 생성
+      const existingSnapshots = timeline.snapshots.filter(snapshot => snapshot.tabId === filePath);
+      if (existingSnapshots.length === 0) {
+        timeline.createSnapshot(
+          "파일 열기",
+          content,
+          fileName,
+          filePath,
+          filePath, // 탭 ID는 filePath
+          editor.cursorPosition || undefined,
+          timeline.SnapshotType.MANUAL, // 수동 스냅샷으로 표시
+          ["파일 열기", "초기 상태"],
+          editor.scrollPosition || undefined
+        );
+      }
       
       // 최초 파일 열기 시에만 새 파일 탭 닫기
       if (isFirstFileOpen) {
@@ -811,6 +837,114 @@ const MainLayout: React.FC = () => {
     };
   }, [toast]);
 
+  // 파일 잘라내기
+  const handleCutFile = (path: string) => {
+    setClipboard({
+      action: 'cut',
+      path
+    });
+    toast.showToast('파일이 잘라내기 되었습니다. 원하는 위치에서 붙여넣기 하세요.', 'info');
+    logging.addToHistory(`파일 잘라내기: ${path}`);
+  };
+
+  // 파일 복사
+  const handleCopyFile = (path: string) => {
+    setClipboard({
+      action: 'copy',
+      path
+    });
+    toast.showToast('파일이 복사되었습니다. 원하는 위치에서 붙여넣기 하세요.', 'info');
+    logging.addToHistory(`파일 복사: ${path}`);
+  };
+
+  // 파일 이름 변경
+  const handleRenameFile = async (path: string) => {
+    const fileName = path.split(/[/\\]/).pop() || '';
+    const newName = window.prompt('새 이름을 입력하세요:', fileName);
+    
+    if (newName && newName !== fileName) {
+      try {
+        const dirPath = path.substring(0, path.length - fileName.length);
+        const newPath = dirPath + newName;
+        
+        const success = await fileSystem.renameFileOrFolder(path, newPath);
+        
+        if (success) {
+          toast.showToast('파일 이름이 변경되었습니다.', 'success');
+          logging.addToHistory(`파일 이름 변경: ${path} → ${newPath}`);
+          
+          // 현재 열려있는 파일이면 탭 업데이트
+          if (path === fileSystem.selectedFilePath) {
+            // 현재 열려있는 탭 업데이트
+            const updatedTabs = tabs.tabs.map(tab => {
+              if (tab.path === path) {
+                return { ...tab, path: newPath, name: newName };
+              }
+              return tab;
+            });
+            
+            // 탭 업데이트 및 활성화
+            const tabToActivate = updatedTabs.find(tab => tab.path === newPath);
+            if (tabToActivate) {
+              tabs.activateTab(tabToActivate.id);
+            }
+            tabs.setTabs(updatedTabs);
+            fileSystem.setSelectedFilePath(newPath);
+          }
+          
+          // 폴더 구조 새로고침
+          await fileSystem.loadFolderStructure();
+        }
+      } catch (error) {
+        console.error('파일 이름 변경 오류:', error);
+        toast.showToast('파일 이름 변경 중 오류가 발생했습니다.', 'error');
+      }
+    }
+  };
+
+  // 파일 삭제
+  const handleDeleteFile = async (path: string) => {
+    const fileName = path.split(/[/\\]/).pop() || '';
+    const confirmDelete = window.confirm(`정말로 "${fileName}"을(를) 삭제하시겠습니까?`);
+    
+    if (confirmDelete) {
+      try {
+        const success = await fileSystem.deleteFile(path);
+        
+        if (success) {
+          toast.showToast('파일이 삭제되었습니다.', 'success');
+          logging.addToHistory(`파일 삭제: ${path}`);
+          
+          // 현재 열려있는 파일이면 탭 닫기
+          if (path === fileSystem.selectedFilePath) {
+            // 해당 경로의 탭 찾기
+            const tabToClose = tabs.tabs.find(tab => tab.path === path);
+            if (tabToClose) {
+              // 탭 닫기 처리
+              const newTabs = tabs.tabs.filter(tab => tab.path !== path);
+              tabs.setTabs(newTabs);
+              
+              // 다른 탭이 있으면 활성화
+              if (newTabs.length > 0) {
+                tabs.activateTab(newTabs[0].id);
+                fileSystem.setSelectedFilePath(newTabs[0].path);
+              } else {
+                tabs.activateTab(''); // 빈 문자열 또는 유효하지 않은 ID를 전달하여 활성 탭 없음 상태로 만듦
+                fileSystem.setSelectedFilePath(null);
+              }
+            }
+          }
+          
+          // 폴더 구조 새로고침
+          await fileSystem.loadFolderStructure();
+        }
+      } catch (error) {
+        console.error('파일 삭제 오류:', error);
+        toast.showToast('파일 삭제 중 오류가 발생했습니다.', 'error');
+      }
+    }
+  };
+
   return (
     <div className="app-container dark">
       {/* 메뉴바 */}
@@ -910,56 +1044,73 @@ const MainLayout: React.FC = () => {
                 <div className="menu-option">
                   <span>에디터</span>
                   <span className="shortcut-hint">▶</span>
-                  <div className="submenu editor-settings-submenu">
-                    <div className="checkbox-option">
+                  <div className="submenu editor-settings-submenu" onClick={(e) => e.stopPropagation()}>
+                    <div className="checkbox-option" onClick={(e) => e.stopPropagation()}>
                       <input 
                         type="checkbox" 
                         id="wordWrap" 
                         checked={editor.wordWrap === 'on'} 
-                        onChange={() => editor.setWordWrap(editor.wordWrap === 'on' ? 'off' : 'on')} 
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          editor.setWordWrap(editor.wordWrap === 'on' ? 'off' : 'on');
+                        }} 
                       />
-                      <label htmlFor="wordWrap">자동 줄바꿈</label>
+                      <label htmlFor="wordWrap" onClick={(e) => e.stopPropagation()}>자동 줄바꿈</label>
                     </div>
-                    <div className="checkbox-option">
+                    <div className="checkbox-option" onClick={(e) => e.stopPropagation()}>
                       <input 
                         type="checkbox" 
                         id="lineNumbers" 
                         checked={editor.showLineNumbers} 
-                        onChange={() => editor.setShowLineNumbers(!editor.showLineNumbers)} 
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          editor.setShowLineNumbers(!editor.showLineNumbers);
+                        }} 
                       />
-                      <label htmlFor="lineNumbers">줄 번호 표시</label>
+                      <label htmlFor="lineNumbers" onClick={(e) => e.stopPropagation()}>줄 번호 표시</label>
                     </div>
-                    <div className="checkbox-option">
+                    <div className="checkbox-option" onClick={(e) => e.stopPropagation()}>
                       <input 
                         type="checkbox" 
                         id="minimap" 
                         checked={editor.showMinimap} 
-                        onChange={() => editor.setShowMinimap(!editor.showMinimap)} 
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          editor.setShowMinimap(!editor.showMinimap);
+                        }} 
                       />
-                      <label htmlFor="minimap">미니맵 표시</label>
+                      <label htmlFor="minimap" onClick={(e) => e.stopPropagation()}>미니맵 표시</label>
                     </div>
                   </div>
                 </div>
                 <div className="menu-option">
                   <span>글꼴</span>
                   <span className="shortcut-hint">▶</span>
-                  <div className="submenu font-settings-submenu">
-                    <div className="dropdown-section">
+                  <div className="submenu font-settings-submenu" onClick={(e) => e.stopPropagation()}>
+                    <div className="dropdown-section" onClick={(e) => e.stopPropagation()}>
                       <div className="dropdown-label">글꼴 크기</div>
                       <select 
                         value={editor.fontSize} 
-                        onChange={(e) => editor.setFontSize(Number(e.target.value))}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          editor.setFontSize(Number(e.target.value));
+                        }}
+                        onClick={(e) => e.stopPropagation()}
                       >
                         {[10, 12, 14, 16, 18, 20, 22, 24].map(size => (
                           <option key={size} value={size}>{size}px</option>
                         ))}
                       </select>
                     </div>
-                    <div className="dropdown-section">
+                    <div className="dropdown-section" onClick={(e) => e.stopPropagation()}>
                       <div className="dropdown-label">글꼴 패밀리</div>
                       <select 
                         value={editor.fontFamily} 
-                        onChange={(e) => editor.setFontFamily(e.target.value)}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          editor.setFontFamily(e.target.value);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
                       >
                         <option value="Consolas">Consolas</option>
                         <option value="Courier New">Courier New</option>
@@ -981,7 +1132,7 @@ const MainLayout: React.FC = () => {
                   type="checkbox" 
                   id="wordWrap" 
                   checked={editor.wordWrap === 'on'} 
-                  onChange={() => editor.setWordWrap(editor.wordWrap === 'on' ? 'off' : 'on')} 
+                  onChange={(e) => editor.setWordWrap(editor.wordWrap === 'on' ? 'off' : 'on')} 
                 />
                 <label htmlFor="wordWrap">자동 줄바꿈</label>
               </div>
@@ -990,7 +1141,7 @@ const MainLayout: React.FC = () => {
                   type="checkbox" 
                   id="lineNumbers" 
                   checked={editor.showLineNumbers} 
-                  onChange={() => editor.setShowLineNumbers(!editor.showLineNumbers)} 
+                  onChange={(e) => editor.setShowLineNumbers(!editor.showLineNumbers)} 
                 />
                 <label htmlFor="lineNumbers">줄 번호 표시</label>
               </div>
@@ -999,7 +1150,7 @@ const MainLayout: React.FC = () => {
                   type="checkbox" 
                   id="minimap" 
                   checked={editor.showMinimap} 
-                  onChange={() => editor.setShowMinimap(!editor.showMinimap)} 
+                  onChange={(e) => editor.setShowMinimap(!editor.showMinimap)} 
                 />
                 <label htmlFor="minimap">미니맵 표시</label>
               </div>
@@ -1064,22 +1215,26 @@ const MainLayout: React.FC = () => {
       <div className="main-content">
         {/* 파일 탐색기 */}
         {layout.showFolderPanel && (
-          <>
+          <div className="file-explorer-panel" style={{ width: `${layout.folderPanelWidth}px` }}>
             <FileExplorer
-              folderPath={fileSystem.folderPath || ''}
+              folderPath={fileSystem.folderPath}
               folderStructure={fileSystem.folderStructure}
               selectedFilePath={fileSystem.selectedFilePath}
               onFileSelect={handleFileSelect}
               onFolderSelect={handleFolderSelect}
-              hasParentFolder={!!fileSystem.folderPath}
               onParentFolderClick={handleParentFolderClick}
+              hasParentFolder={fileSystem.hasParentFolder}
               folderPanelWidth={layout.folderPanelWidth}
+              onCut={handleCutFile}
+              onCopy={handleCopyFile}
+              onRename={handleRenameFile}
+              onDelete={handleDeleteFile}
             />
-            <div 
-              className="resizer resizer-vertical"
+            <div
+              className="resize-handle"
               onMouseDown={handleFolderPanelResizerMouseDown}
-            ></div>
-          </>
+            />
+          </div>
         )}
         
         {/* 에디터 영역 */}
