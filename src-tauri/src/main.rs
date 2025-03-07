@@ -11,6 +11,9 @@ use std::collections::VecDeque;
 use std::io::Write;
 use std::panic;
 use std::fs::OpenOptions;
+use std::sync::mpsc::{channel, Sender, Receiver};
+use std::thread;
+use tauri::Manager;
 
 #[cfg(target_os = "windows")]
 use winapi::um::fileapi::{GetFileAttributesW};
@@ -22,6 +25,8 @@ use std::os::windows::ffi::OsStrExt;
 // 로그 메시지를 저장할 전역 변수
 struct LogState {
     messages: VecDeque<LogMessage>,
+    terminal_sender: Option<Sender<String>>,
+    last_messages: VecDeque<(String, String)>, // 최근 메시지 저장 (level, message)
 }
 
 #[derive(Clone, Serialize)]
@@ -35,10 +40,29 @@ impl LogState {
     fn new() -> Self {
         Self {
             messages: VecDeque::with_capacity(1000), // 최대 1000개 메시지 저장
+            terminal_sender: None,
+            last_messages: VecDeque::with_capacity(10), // 최근 10개 메시지 저장
         }
     }
 
     fn add_message(&mut self, level: &str, message: &str) {
+        // 중복 로그 방지
+        let message_key = (level.to_string(), message.to_string());
+        if self.is_duplicate_message(level, message) {
+            return; // 중복 메시지는 추가하지 않음
+        }
+        
+        // 중요하지 않은 로그 필터링
+        if !self.is_important_log(level, message) {
+            return; // 중요하지 않은 로그는 추가하지 않음
+        }
+        
+        // 최근 메시지 목록 업데이트
+        if self.last_messages.len() >= 10 {
+            self.last_messages.pop_front();
+        }
+        self.last_messages.push_back(message_key);
+        
         let now = chrono::Local::now();
         let timestamp = now.format("%Y-%m-%d %H:%M:%S").to_string();
         
@@ -54,16 +78,73 @@ impl LogState {
         }
         
         self.messages.push_back(log_message);
+        
+        // 터미널 로그 전송 (있는 경우)
+        if let Some(sender) = &self.terminal_sender {
+            let _ = sender.send(format!("[{}] {}", level, message));
+        }
     }
 
     fn get_messages(&self) -> Vec<LogMessage> {
         self.messages.iter().cloned().collect()
+    }
+    
+    fn set_terminal_sender(&mut self, sender: Sender<String>) {
+        self.terminal_sender = Some(sender);
+    }
+    
+    // 중복 메시지 확인
+    fn is_duplicate_message(&self, level: &str, message: &str) -> bool {
+        let message_key = (level.to_string(), message.to_string());
+        self.last_messages.contains(&message_key)
+    }
+    
+    // 중요한 로그인지 확인
+    fn is_important_log(&self, level: &str, message: &str) -> bool {
+        // 오류 및 경고는 항상 중요
+        if level == "error" || level == "warning" || level == "fatal" {
+            return true;
+        }
+        
+        // 앱 초기화 관련 반복 로그 필터링
+        if message.contains("앱 초기화") && 
+           self.messages.iter().any(|log| log.message.contains("앱 초기화")) {
+            return false;
+        }
+        
+        // 사용자 입력 관련 로그
+        if message.contains("입력") || message.contains("클릭") || message.contains("선택") {
+            return true;
+        }
+        
+        // 파일 작업 관련 로그
+        if message.contains("파일") || message.contains("저장") || message.contains("열기") {
+            return true;
+        }
+        
+        // 실행 관련 로그
+        if message.contains("실행") || message.contains("시작") || message.contains("종료") {
+            return true;
+        }
+        
+        // 디버그 레벨은 중요하지 않음
+        if level == "debug" {
+            return false;
+        }
+        
+        // 기본적으로 info 레벨은 중요
+        level == "info"
     }
 }
 
 // 전역 로그 상태 관리
 lazy_static::lazy_static! {
     static ref LOG_STATE: Mutex<LogState> = Mutex::new(LogState::new());
+}
+
+// 앱 핸들 저장을 위한 전역 변수
+lazy_static::lazy_static! {
+    static ref APP_HANDLE: Mutex<Option<tauri::AppHandle>> = Mutex::new(None);
 }
 
 // 로그 파일 경로 가져오기
@@ -100,7 +181,11 @@ fn log_to_file(level: &str, message: &str) {
 
 // 로그 추가 함수 수정
 fn add_log(level: &str, message: &str) {
-    println!("LOG: [{}] {}", level, message);
+    // 중요한 로그만 콘솔에 출력
+    if is_important_console_log(level, message) {
+        println!("LOG: [{}] {}", level, message);
+    }
+    
     // 메모리 로그에 추가
     if let Ok(mut state) = LOG_STATE.lock() {
         state.add_message(level, message);
@@ -108,6 +193,63 @@ fn add_log(level: &str, message: &str) {
     
     // 파일에 로그 기록
     log_to_file(level, message);
+    
+    // 앱 핸들이 있으면 이벤트 발생
+    if let Some(app_handle) = APP_HANDLE.lock().ok().and_then(|h| h.clone()) {
+        // Manager 트레이트를 사용하여 이벤트 발생
+        let _ = app_handle.emit_all("terminal-log", LogMessage {
+            level: level.to_string(),
+            message: message.to_string(),
+            timestamp: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        });
+    }
+}
+
+// 콘솔에 출력할 중요한 로그인지 확인
+fn is_important_console_log(level: &str, message: &str) -> bool {
+    // 오류 및 경고는 항상 중요
+    if level == "error" || level == "warning" || level == "fatal" {
+        return true;
+    }
+    
+    // 앱 초기화 관련 로그는 한 번만 출력
+    static mut APP_INIT_LOGGED: bool = false;
+    if message.contains("앱 초기화") {
+        unsafe {
+            if APP_INIT_LOGGED {
+                return false;
+            }
+            APP_INIT_LOGGED = true;
+        }
+    }
+    
+    // 터미널 로그 관련 메시지는 출력하지 않음
+    if message.contains("터미널 로그") {
+        return false;
+    }
+    
+    // 사용자 입력 관련 로그
+    if message.contains("입력") || message.contains("클릭") || message.contains("선택") {
+        return true;
+    }
+    
+    // 파일 작업 관련 로그
+    if message.contains("파일") || message.contains("저장") || message.contains("열기") {
+        return true;
+    }
+    
+    // 실행 관련 로그
+    if message.contains("실행") || message.contains("시작") || message.contains("종료") {
+        return true;
+    }
+    
+    // 디버그 레벨은 출력하지 않음
+    if level == "debug" {
+        return false;
+    }
+    
+    // 기본적으로 info 레벨은 중요
+    level == "info"
 }
 
 // 로그 메시지 가져오기 명령
@@ -124,6 +266,13 @@ fn get_logs() -> Vec<LogMessage> {
 #[tauri::command]
 fn add_log_message(level: &str, message: &str) {
     add_log(level, message);
+}
+
+// 터미널 로그 가져오기 명령
+#[tauri::command]
+fn get_terminal_logs() -> Vec<String> {
+    // 현재는 빈 배열 반환, 실제 구현은 메인 함수에서 처리
+    Vec::new()
 }
 
 // 파일 엔트리 구조체
@@ -298,49 +447,89 @@ fn safe_read_dir(path: &Path) -> Result<Vec<FileEntry>, String> {
 
 #[tauri::command]
 fn greet(name: &str) -> String {
-    format!("안녕하세요, {}님! Maulwurf G코드 에디터에 오신 것을 환영합니다!", name)
+    format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
 #[tauri::command]
 fn is_directory(path: &str) -> bool {
-    let path = std::path::Path::new(path);
-    path.is_dir()
+    Path::new(path).is_dir()
 }
 
 #[tauri::command]
 fn get_dropped_file_path(file_path: &str) -> String {
-    // 드롭된 파일 경로 반환
-    // 웹에서 드래그된 파일은 경로가 없을 수 있으므로 이 함수를 통해 처리
     file_path.to_string()
 }
 
 fn main() {
-    println!("Starting Tauri application...");
+    // 터미널 로그 캡처를 위한 채널 생성
+    let (tx, rx): (Sender<String>, Receiver<String>) = channel();
+    
+    // 로그 상태에 터미널 로그 전송자 설정
+    if let Ok(mut state) = LOG_STATE.lock() {
+        state.set_terminal_sender(tx.clone());
+    }
     
     // 패닉 핸들러 설정
     panic::set_hook(Box::new(|panic_info| {
-        println!("Application panic occurred: {:?}", panic_info);
-        // 기존 로그 코드가 있다면 유지
+        let message = format!("애플리케이션 패닉: {}", panic_info);
+        add_log("fatal", &message);
     }));
     
+    // 터미널 로그 수신 및 처리 스레드
+    thread::spawn(move || {
+        // 최근 로그 메시지를 저장하는 집합
+        let mut recent_logs = std::collections::HashSet::new();
+        
+        while let Ok(log_message) = rx.recv() {
+            // 중복 로그 방지
+            if recent_logs.contains(&log_message) {
+                continue;
+            }
+            
+            // 최근 로그 목록 관리 (최대 20개)
+            recent_logs.insert(log_message.clone());
+            if recent_logs.len() > 20 {
+                // 가장 오래된 로그 제거 (HashSet에서는 어렵기 때문에 전체 초기화)
+                recent_logs.clear();
+                recent_logs.insert(log_message.clone());
+            }
+            
+            // 중요한 로그만 출력
+            if !log_message.contains("앱 초기화") && !log_message.contains("터미널 로그") {
+                println!("터미널 로그: {}", log_message);
+            }
+        }
+    });
+    
+    // 시작 로그
+    add_log("info", "애플리케이션 시작");
+    
+    // Tauri 앱 실행
     tauri::Builder::default()
-        .manage(Mutex::new(LogState::new()))
         .invoke_handler(tauri::generate_handler![
             greet,
-            read_dir,
             is_directory,
             get_dropped_file_path,
-            get_logs,
+            read_dir,
             add_log_message,
+            get_logs,
+            get_terminal_logs
         ])
-        .setup(|_app| {
-            println!("Tauri app setup complete");
-            // 로그 파일 초기화
+        .setup(|app| {
+            // 앱 핸들 저장
+            if let Ok(mut handle) = APP_HANDLE.lock() {
+                *handle = Some(app.handle());
+            }
+            
+            // 로그 파일 경로 출력
             let log_path = get_log_file_path();
-            println!("Log file path: {:?}", log_path);
+            println!("로그 파일 경로: {:?}", log_path);
             
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .expect("Tauri 앱 실행 중 오류 발생");
+    
+    // 종료 로그
+    add_log("info", "애플리케이션 종료");
 } 

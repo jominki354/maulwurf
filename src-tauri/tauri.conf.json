@@ -8,7 +8,7 @@
   },
   "package": {
     "productName": "Maulwurf",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "tauri": {
     "allowlist": {
@@ -42,6 +42,9 @@
           "E:\\**",
           "F:\\**"
         ]
+      },
+      "path": {
+        "all": true
       }
     },
     "bundle": {
@@ -67,7 +70,10 @@
         "resizable": true,
         "title": "Maulwurf",
         "width": 1200,
-        "devTools": true
+        "devTools": true,
+        "backgroundColor": "#1e1e1e",
+        "decorations": true,
+        "center": true
       }
     ]
   }
