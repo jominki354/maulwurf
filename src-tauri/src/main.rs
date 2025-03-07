@@ -5,7 +5,7 @@
 
 use std::fs;
 use std::path::Path;
-use serde::{Serialize, Deserialize};
+use serde::Serialize;
 use std::sync::Mutex;
 use std::collections::VecDeque;
 use std::io::Write;
@@ -126,183 +126,6 @@ fn add_log_message(level: &str, message: &str) {
     add_log(level, message);
 }
 
-// 설정 구조체
-#[derive(Serialize, Deserialize, Clone, Debug)]
-struct AppSettings {
-    last_folder_path: String,
-    favorite_folders: Vec<String>,
-    font_family: String,
-    font_size: i32,
-    word_wrap: bool,
-    show_line_numbers: bool,
-    show_minimap: bool,
-    theme: String,
-    accessible_folders: Vec<String>, // 접근 가능한 폴더 목록
-}
-
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            last_folder_path: "C:\\".to_string(),
-            favorite_folders: vec![],
-            font_family: "Consolas".to_string(),
-            font_size: 18,
-            word_wrap: false,
-            show_line_numbers: true,
-            show_minimap: true,
-            theme: "dark".to_string(),
-            accessible_folders: vec!["C:\\".to_string(), "D:\\".to_string()],
-        }
-    }
-}
-
-// 전역 설정 상태
-lazy_static::lazy_static! {
-    static ref APP_SETTINGS: Mutex<AppSettings> = Mutex::new(AppSettings::default());
-}
-
-// 설정 파일 경로 가져오기
-fn get_settings_file_path() -> std::path::PathBuf {
-    let mut path = std::env::current_exe().unwrap_or_default();
-    path.pop(); // 실행 파일 이름 제거
-    path.push("maulwurf_settings.json");
-    path
-}
-
-// 설정 저장 함수
-fn save_settings() -> Result<(), String> {
-    let settings = match APP_SETTINGS.lock() {
-        Ok(settings) => settings.clone(),
-        Err(_) => return Err("설정 데이터 잠금 획득 실패".to_string()),
-    };
-    
-    let settings_path = get_settings_file_path();
-    let settings_json = match serde_json::to_string_pretty(&settings) {
-        Ok(json) => json,
-        Err(e) => return Err(format!("설정 직렬화 실패: {}", e)),
-    };
-    
-    let mut file = match std::fs::File::create(&settings_path) {
-        Ok(file) => file,
-        Err(e) => return Err(format!("설정 파일 생성 실패: {}", e)),
-    };
-    
-    match file.write_all(settings_json.as_bytes()) {
-        Ok(_) => {
-            add_log("info", &format!("설정 저장 성공: {}", settings_path.display()));
-            Ok(())
-        },
-        Err(e) => Err(format!("설정 파일 쓰기 실패: {}", e)),
-    }
-}
-
-// 설정 로드 함수
-fn load_settings() -> Result<(), String> {
-    let settings_path = get_settings_file_path();
-    
-    if !settings_path.exists() {
-        add_log("info", "설정 파일이 없어 기본 설정을 사용합니다.");
-        return save_settings(); // 기본 설정 저장
-    }
-    
-    let settings_json = match std::fs::read_to_string(&settings_path) {
-        Ok(json) => json,
-        Err(e) => return Err(format!("설정 파일 읽기 실패: {}", e)),
-    };
-    
-    let settings: AppSettings = match serde_json::from_str(&settings_json) {
-        Ok(settings) => settings,
-        Err(e) => return Err(format!("설정 역직렬화 실패: {}", e)),
-    };
-    
-    if let Ok(mut app_settings) = APP_SETTINGS.lock() {
-        *app_settings = settings;
-        add_log("info", &format!("설정 로드 성공: {}", settings_path.display()));
-        Ok(())
-    } else {
-        Err("설정 데이터 잠금 획득 실패".to_string())
-    }
-}
-
-// 설정 가져오기 명령
-#[tauri::command]
-fn get_settings() -> Result<AppSettings, String> {
-    match APP_SETTINGS.lock() {
-        Ok(settings) => Ok(settings.clone()),
-        Err(_) => Err("설정 데이터 잠금 획득 실패".to_string()),
-    }
-}
-
-// 설정 업데이트 명령
-#[tauri::command]
-fn update_settings(settings: AppSettings) -> Result<(), String> {
-    if let Ok(mut app_settings) = APP_SETTINGS.lock() {
-        *app_settings = settings;
-        save_settings()?;
-        add_log("info", "설정이 업데이트되었습니다.");
-        Ok(())
-    } else {
-        Err("설정 데이터 잠금 획득 실패".to_string())
-    }
-}
-
-// 마지막 폴더 경로 업데이트 명령
-#[tauri::command]
-fn update_last_folder_path(path: &str) -> Result<(), String> {
-    if let Ok(mut settings) = APP_SETTINGS.lock() {
-        settings.last_folder_path = path.to_string();
-        save_settings()?;
-        add_log("info", &format!("마지막 폴더 경로 업데이트: {}", path));
-        Ok(())
-    } else {
-        Err("설정 데이터 잠금 획득 실패".to_string())
-    }
-}
-
-// 즐겨찾기 폴더 추가 명령
-#[tauri::command]
-fn add_favorite_folder(path: &str) -> Result<(), String> {
-    if let Ok(mut settings) = APP_SETTINGS.lock() {
-        if !settings.favorite_folders.contains(&path.to_string()) {
-            settings.favorite_folders.push(path.to_string());
-            save_settings()?;
-            add_log("info", &format!("즐겨찾기 폴더 추가: {}", path));
-        }
-        Ok(())
-    } else {
-        Err("설정 데이터 잠금 획득 실패".to_string())
-    }
-}
-
-// 즐겨찾기 폴더 제거 명령
-#[tauri::command]
-fn remove_favorite_folder(path: &str) -> Result<(), String> {
-    if let Ok(mut settings) = APP_SETTINGS.lock() {
-        settings.favorite_folders.retain(|p| p != path);
-        save_settings()?;
-        add_log("info", &format!("즐겨찾기 폴더 제거: {}", path));
-        Ok(())
-    } else {
-        Err("설정 데이터 잠금 획득 실패".to_string())
-    }
-}
-
-// 접근 가능한 폴더 추가 명령
-#[tauri::command]
-fn add_accessible_folder(path: &str) -> Result<(), String> {
-    if let Ok(mut settings) = APP_SETTINGS.lock() {
-        // 이미 목록에 있는지 확인
-        if !settings.accessible_folders.contains(&path.to_string()) {
-            settings.accessible_folders.push(path.to_string());
-            save_settings()?;
-            add_log("info", &format!("접근 가능한 폴더 추가: {}", path));
-        }
-        Ok(())
-    } else {
-        Err("설정 데이터 잠금 획득 실패".to_string())
-    }
-}
-
 // 파일 엔트리 구조체
 #[derive(Serialize, Clone)]
 struct FileEntry {
@@ -370,8 +193,7 @@ fn read_dir(path: String) -> Result<Vec<FileEntry>, String> {
     // 안전하게 디렉토리 읽기 시도
     match safe_read_dir(path) {
         Ok(entries) => {
-            // 성공적으로 읽었으면 마지막 폴더 경로 업데이트
-            let _ = update_last_folder_path(path.to_str().unwrap_or(""));
+            // 성공적으로 읽었으면 로그만 남김
             add_log("info", &format!("디렉토리 읽기 성공: {} (항목 수: {})", path.display(), entries.len()));
             Ok(entries)
         },
@@ -474,45 +296,6 @@ fn safe_read_dir(path: &Path) -> Result<Vec<FileEntry>, String> {
     Ok(file_entries)
 }
 
-// 시스템 폰트 목록을 가져오는 명령 (간소화된 버전)
-#[tauri::command]
-fn get_system_fonts() -> Vec<String> {
-    // 기본 폰트 목록 반환
-    vec![
-        "Consolas".to_string(),
-        "Courier New".to_string(),
-        "Lucida Console".to_string(),
-        "Monaco".to_string(),
-        "Menlo".to_string(),
-        "Source Code Pro".to_string(),
-        "Fira Code".to_string(),
-        "Roboto Mono".to_string(),
-        "Ubuntu Mono".to_string(),
-        "Nanum Gothic Coding".to_string(),
-        "D2Coding".to_string(),
-        "Noto Sans KR".to_string(),
-        "Arial".to_string(),
-        "Verdana".to_string(),
-        "Tahoma".to_string(),
-        "Times New Roman".to_string(),
-        "Georgia".to_string(),
-        "Segoe UI".to_string(),
-        "Calibri".to_string(),
-        "Cambria".to_string(),
-        "Helvetica".to_string(),
-        "Meiryo".to_string(),
-        "MS Gothic".to_string(),
-        "MS PGothic".to_string(),
-        "MS Mincho".to_string(),
-        "MS PMincho".to_string(),
-        "Malgun Gothic".to_string(),
-        "Gulim".to_string(),
-        "Dotum".to_string(),
-        "Batang".to_string(),
-    ]
-}
-
-// 파일 관련 명령어를 처리하는 함수들
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("안녕하세요, {}님! Maulwurf G코드 에디터에 오신 것을 환영합니다!", name)
@@ -542,17 +325,9 @@ fn main() {
     
     tauri::Builder::default()
         .manage(Mutex::new(LogState::new()))
-        .manage(Mutex::new(AppSettings::default()))
         .invoke_handler(tauri::generate_handler![
             greet,
             read_dir,
-            get_system_fonts,
-            get_settings,
-            update_settings,
-            update_last_folder_path,
-            add_favorite_folder,
-            remove_favorite_folder,
-            add_accessible_folder,
             is_directory,
             get_dropped_file_path,
             get_logs,
@@ -563,12 +338,6 @@ fn main() {
             // 로그 파일 초기화
             let log_path = get_log_file_path();
             println!("Log file path: {:?}", log_path);
-            
-            // 설정 파일 로드
-            match load_settings() {
-                Ok(_) => println!("Settings loaded successfully"),
-                Err(e) => println!("Failed to load settings: {}", e),
-            }
             
             Ok(())
         })

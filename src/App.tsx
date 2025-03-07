@@ -38,17 +38,7 @@ const FONT_OPTIONS = [
   'Noto Sans KR',
 ];
 
-// 시스템 폰트 가져오기 함수
-const getSystemFonts = async () => {
-  try {
-    // Tauri API를 통해 시스템 폰트 목록 가져오기
-    const fonts = await invoke('get_system_fonts');
-    return fonts as string[];
-  } catch (error) {
-    console.error('시스템 폰트를 가져오는 중 오류 발생:', error);
-    return FONT_OPTIONS; // 오류 시 기본 폰트 목록 반환
-  }
-};
+// 시스템 폰트 가져오기 함수 삭제
 
 // 토스트 메시지 인터페이스
 interface Toast {
@@ -231,8 +221,8 @@ function App() {
       // 현재 활성 탭 업데이트
       updateTabContent(activeTabId, newValue);
       
-      // 코드 유효성 검사
-      validateGcode(newValue);
+      // 코드 유효성 검사 - 단순 뷰어 역할에서는 필요 없음
+      // validateGcode(newValue);
       
       debounceTimerRef.current = null;
     }, 300);
@@ -372,7 +362,7 @@ function App() {
     };
   }, []);
 
-  // 폴더 구조 가져오기
+  // 폴더 구조 가져오기 - 단순 뷰어 역할로 수정
   const fetchFolderStructure = async (path: string = folderPath) => {
     try {
       if (!path) return;
@@ -381,6 +371,7 @@ function App() {
       const pathParts = path.split(/[/\\]/);
       setHasParentFolder(pathParts.length > 1);
       
+      // 폴더 내용 읽기
       const result = await invoke('read_dir', { path });
       
       // 윈도우 숨김 파일만 필터링
@@ -395,45 +386,51 @@ function App() {
         return a.name.localeCompare(b.name);
       });
       
+      // 단순히 폴더 구조만 표시
       setFolderStructure(sortedResult);
       setFolderPath(path);
       
-      // 경로 히스토리에 추가
-      addToHistory(`폴더 열기: ${formatDrivePath(path)}`);
+      // 로그만 남기고 다른 작업은 하지 않음
+      await log(LogLevel.INFO, `폴더 내용 표시: ${formatDrivePath(path)}`);
     } catch (error) {
       console.error('폴더 구조 가져오기 오류:', error);
       setFolderStructure([]);
+      showToast(`폴더 내용을 가져올 수 없습니다: ${error}`, 'error');
     }
   };
 
-  // 폴더 열기 핸들러
+  // 폴더 열기 핸들러 - 단순 뷰어 역할로 수정
   const handleOpenFolder = async (path: string) => {
     try {
+      // 단순히 폴더 경로 설정 및 내용 표시
       setFolderPath(path);
       await fetchFolderStructure(path);
       setHasParentFolder(path.length > 3); // 드라이브 루트가 아닌 경우 (예: "C:\" 보다 긴 경우)
-      addLog('info', `폴더 열기 성공: ${path}`);
+      await log(LogLevel.INFO, `폴더 내용 표시: ${path}`);
     } catch (error) {
       console.error('폴더 접근 오류:', error);
-      addLog('error', `폴더 접근 오류: ${error}`);
+      await logError(error as Error, `폴더 접근 오류: ${path}`);
       showToast(`폴더를 열 수 없습니다: ${error}`, 'error');
     }
   };
 
-  // 폴더 선택 대화상자 표시
+  // 폴더 선택 대화상자 표시 - 단순 뷰어 역할로 수정
   const handleBrowseFolder = async () => {
     try {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: '작업 폴더 선택'
+        title: '폴더 선택'
       });
       
       if (selected) {
+        // 선택한 폴더 내용만 표시
         await handleOpenFolder(selected as string);
+        await log(LogLevel.INFO, `폴더 선택됨: ${selected}`);
       }
     } catch (error) {
       console.error('폴더 선택 오류:', error);
+      showToast(`폴더를 선택할 수 없습니다: ${error}`, 'error');
     }
   };
 
@@ -862,10 +859,10 @@ function App() {
     return <span className={iconClass}>{iconSymbol}</span>;
   };
 
-  // 폴더 구조 렌더링
+  // 폴더 구조 렌더링 - 단순 뷰어 역할로 수정
   const renderFolderStructure = (items: any[], level = 0) => {
     if (!items || items.length === 0) {
-      return <div className="empty-history">폴더가 비어 있습니다.</div>;
+      return <div className="empty-folder">폴더가 비어 있습니다.</div>;
     }
     
     // 현재 폴더의 상위 폴더 경로 계산
@@ -887,12 +884,8 @@ function App() {
         {hasParentFolder ? (
           <li 
             className="folder-item parent-folder"
-            onClick={(e) => {
-              // 단일 클릭으로는 아무 작업도 하지 않음
-              e.stopPropagation();
-            }}
-            onDoubleClick={(e) => {
-              e.stopPropagation();
+            onClick={() => {
+              // 단순히 상위 폴더 내용 표시
               if (parentFolder) {
                 handleOpenFolder(parentFolder);
               }
@@ -915,26 +908,20 @@ function App() {
         {items.map((item, index) => (
           <li 
             key={index} 
-            className={item.isDir ? 'folder-item' : 'file-item'}
-            onClick={(e) => {
-              // 단일 클릭으로는 아무 작업도 하지 않음
-              e.stopPropagation();
-            }}
-            onDoubleClick={(e) => {
-              e.stopPropagation();
-              if (item.isDir) {
+            className={item.is_dir ? 'folder-item' : 'file-item'}
+            onClick={() => {
+              // 단일 클릭으로 폴더/파일 처리
+              if (item.is_dir) {
+                // 폴더인 경우 내용 표시
                 handleOpenFolder(item.path);
-              } else if (filePath !== item.path) {
-                // 이미 열려있는 파일이 아닌 경우에만 파일 열기
-                handleFileSelect(item.path);
               } else {
-                // 이미 열려있는 파일을 클릭한 경우 - 아무 작업도 하지 않음
-                addToHistory(`이미 열려있는 파일입니다: ${item.name}`);
+                // 파일인 경우 파일 열기
+                handleFileSelect(item.path);
               }
             }}
           >
             <div className={`item-name ${filePath === item.path ? 'selected' : ''}`}>
-              {item.isDir ? (
+              {item.is_dir ? (
                 <span className="folder-icon">📁</span>
               ) : (
                 getFileIcon(item.name)
@@ -1327,7 +1314,7 @@ function App() {
     }
   };
 
-  // 파일 선택 핸들러
+  // 파일 선택 핸들러 - 단순 뷰어 역할로 수정
   const handleFileSelect = async (filePath: string) => {
     try {
       // 이미 열려있는 탭인지 확인
@@ -1338,6 +1325,7 @@ function App() {
         return;
       }
       
+      // 파일 내용 읽기
       const content = await readTextFile(filePath);
       
       // 파일 이름 추출
@@ -1354,6 +1342,7 @@ function App() {
         timelineSnapshots: []
       };
       
+      // 탭 추가 및 활성화
       setTabs(prevTabs => [...prevTabs, newTab]);
       setActiveTabId(newTabId);
       
@@ -1361,22 +1350,12 @@ function App() {
       setGcode(content);
       setFileName(newFileName);
       setFilePath(filePath);
-      setTimelineSnapshots([]);
-      setActiveSnapshotIndex(-1);
       
-      // 히스토리에 추가
-      addToHistory(`파일 열기: ${newFileName}`);
-      showToast(`파일 열기 완료: ${newFileName}`, 'success');
-      
-      // 타임라인 스냅샷 생성
-      createSnapshot(`파일 열기: ${newFileName}`);
-      
-      // 코드 유효성 검사
-      validateGcode(content);
+      // 로그 기록
+      await log(LogLevel.INFO, `파일 열기: ${filePath}`);
     } catch (error) {
-      console.error('파일 읽기 오류:', error);
-      showToast(`파일 읽기 실패: ${error}`, 'error');
-      addToHistory(`파일 읽기 실패: ${error}`);
+      console.error('파일 열기 오류:', error);
+      showToast(`파일을 열 수 없습니다: ${error}`, 'error');
     }
   };
 
@@ -1563,9 +1542,9 @@ function App() {
       try {
         await log(LogLevel.INFO, '앱 초기화 시작');
         
-        // 시스템 폰트 로드
-        const fonts = await getSystemFonts();
-        setSystemFonts(fonts);
+        // 시스템 폰트 로드 부분 삭제
+        // 기본 폰트 목록 사용
+        setSystemFonts(FONT_OPTIONS);
         
         // 기본 폴더 경로를 설정하지 않음 (사용자가 직접 선택하도록 함)
         // 필요한 경우 사용자 문서 폴더 등으로 설정할 수 있음
@@ -1851,28 +1830,20 @@ function App() {
             <div 
               className={`folder-panel resizable ${isDragOver ? 'drag-over' : ''}`} 
               style={{ width: `${folderPanelWidth}px` }}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
             >
               <div className="panel-header">
-                <h3>작업 영역</h3>
+                <h3>폴더 뷰어</h3>
               </div>
               <div 
                 className="folder-path-container"
                 onClick={handleBrowseFolder}
-                title="클릭하여 작업 폴더 선택"
+                title="클릭하여 폴더 선택"
               >
                 <div className="folder-path-text">
                   {formatDrivePath(folderPath) || '폴더를 선택하세요'}
                 </div>
               </div>
-              <div 
-                className="folder-content"
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-              >
+              <div className="folder-content">
                 {renderFolderStructure(folderStructure)}
               </div>
               <div 
