@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
-import { readTextFile, writeTextFile, readDir } from '@tauri-apps/api/fs';
+import { readTextFile, writeTextFile, readDir, copyFile, removeFile, renameFile } from '@tauri-apps/api/fs';
 import { open, save } from '@tauri-apps/api/dialog';
 import { getFileFilters, extractFileName, showOpenFolderDialog } from '../utils/fileUtils';
+import { dirname } from '@tauri-apps/api/path';
 
 export const useFileSystem = () => {
   const [folderPath, setFolderPath] = useState<string>('');
@@ -29,13 +30,52 @@ export const useFileSystem = () => {
       setFolderPath(path);
       
       // 상위 폴더 존재 여부 확인
-      const pathParts = path.split(/[/\\]/);
-      setHasParentFolder(pathParts.length > 1);
+      // 윈도우 드라이브 루트 경로 확인 (예: C:\, D:\ 등)
+      const isWindowsDriveRoot = /^[A-Za-z]:[\\/]?$/.test(path);
+      // 리눅스/맥 루트 경로 확인
+      const isUnixRoot = path === '/';
+      
+      // 루트 경로가 아닌 경우에만 상위 폴더가 있음
+      setHasParentFolder(!isWindowsDriveRoot && !isUnixRoot);
     } catch (error) {
       console.error('폴더 접근 오류:', error);
       setFolderStructure([]);
     }
   }, [folderPath]);
+
+  // 상위 폴더 경로 가져오기
+  const getParentFolderPath = useCallback(async (path: string): Promise<string | null> => {
+    if (!path) return null;
+    
+    try {
+      // Tauri API를 사용하여 상위 디렉토리 경로 가져오기
+      const parentPath = await dirname(path);
+      
+      // 현재 경로와 상위 경로가 같으면 루트로 간주
+      if (parentPath === path) {
+        return null;
+      }
+      
+      return parentPath;
+    } catch (error) {
+      console.error('상위 폴더 경로 가져오기 오류:', error);
+      return null;
+    }
+  }, []);
+
+  // 상위 폴더로 이동
+  const navigateToParentFolder = useCallback(async () => {
+    if (!folderPath || !hasParentFolder) return;
+    
+    try {
+      const parentPath = await getParentFolderPath(folderPath);
+      if (parentPath) {
+        await fetchFolderStructure(parentPath);
+      }
+    } catch (error) {
+      console.error('상위 폴더 이동 오류:', error);
+    }
+  }, [folderPath, hasParentFolder, getParentFolderPath, fetchFolderStructure]);
 
   // 폴더 열기
   const handleOpenFolder = useCallback(async (path: string) => {
@@ -118,18 +158,6 @@ export const useFileSystem = () => {
     return result;
   }, []);
 
-  // 상위 폴더로 이동
-  const navigateToParentFolder = useCallback(async () => {
-    if (!folderPath) return;
-    
-    const pathParts = folderPath.split(/[/\\]/);
-    if (pathParts.length <= 1) return;
-    
-    pathParts.pop();
-    const parentPath = pathParts.join('/');
-    await handleOpenFolder(parentPath);
-  }, [folderPath, handleOpenFolder]);
-
   // 폴더 구조 로드
   const loadFolderStructure = useCallback(async (path: string) => {
     if (!path) return;
@@ -141,21 +169,56 @@ export const useFileSystem = () => {
     }
   }, [fetchFolderStructure]);
 
+  // 파일 복사
+  const copyFileToDestination = useCallback(async (sourcePath: string, destinationPath: string): Promise<boolean> => {
+    try {
+      await copyFile(sourcePath, destinationPath);
+      return true;
+    } catch (error) {
+      console.error('파일 복사 오류:', error);
+      return false;
+    }
+  }, []);
+
+  // 파일 삭제
+  const deleteFile = useCallback(async (filePath: string): Promise<boolean> => {
+    try {
+      await removeFile(filePath);
+      return true;
+    } catch (error) {
+      console.error('파일 삭제 오류:', error);
+      return false;
+    }
+  }, []);
+
+  // 파일 이름 변경
+  const renameFileOrFolder = useCallback(async (oldPath: string, newPath: string): Promise<boolean> => {
+    try {
+      await renameFile(oldPath, newPath);
+      return true;
+    } catch (error) {
+      console.error('파일 이름 변경 오류:', error);
+      return false;
+    }
+  }, []);
+
   return {
     folderPath,
     folderStructure,
     hasParentFolder,
     selectedFilePath,
-    fetchFolderStructure,
-    handleOpenFolder,
-    handleBrowseFolder,
+    setSelectedFilePath,
+    loadFolderStructure: fetchFolderStructure,
+    openFolder: handleOpenFolder,
+    showOpenFolderDialog,
     openFile,
     saveFile,
     showSaveDialog,
     showOpenDialog,
-    showOpenFolderDialog,
     navigateToParentFolder,
-    loadFolderStructure,
-    setSelectedFilePath
+    getParentFolderPath,
+    copyFileToDestination,
+    deleteFile,
+    renameFileOrFolder
   };
 }; 
