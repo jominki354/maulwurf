@@ -30,6 +30,14 @@
   box-sizing: border-box;
 }
 
+/* 전체 앱에 컨텍스트 메뉴 비활성화 */
+html, body, #root, .app-container, * {
+  -webkit-context-menu: none;
+  -moz-context-menu: none;
+  -ms-context-menu: none;
+  context-menu: none;
+}
+
 body {
   font-family: var(--font-family-ui);
   -webkit-font-smoothing: antialiased;
@@ -39,14 +47,24 @@ body {
   color: var(--text-color);
   font-size: var(--font-size-normal);
   letter-spacing: 0.3px;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 .app-container {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background-color: var(--bg-dark);
+  background-color: var(--bg-color);
   color: var(--text-color);
+  font-family: var(--font-family-ui);
+  overflow: hidden;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 /* 윈도우 타이틀바 */
@@ -263,11 +281,11 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  position: relative;
+  height: 100%;
   overflow: hidden;
-  background-color: var(--bg-dark);
-  padding: 0;
+  background-color: #1e1e1e;
   margin: 0;
+  padding: 0;
 }
 
 .editor-background-logo {
@@ -286,7 +304,7 @@ body {
 
 /* 폴더 패널 */
 .folder-panel {
-  width: 250px;
+  width: 100%;
   height: 100%;
   background-color: var(--bg-color);
   border-right: 1px solid var(--border-color);
@@ -294,7 +312,8 @@ body {
   flex-direction: column;
   overflow: hidden;
   min-width: 200px;
-  max-width: 50%;
+  max-width: 100%;
+  outline: none;
 }
 
 .folder-header {
@@ -357,36 +376,34 @@ body {
 
 /* 폴더 경로 컨테이너 */
 .folder-path-container {
-  padding: 8px 10px;
-  background-color: var(--bg-darker);
-  border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
+  padding: 6px 10px;
+  margin: 8px;
+  background-color: #2a2a2a;
+  border-radius: 4px;
   cursor: pointer;
+  border: 1px solid #444;
   transition: background-color 0.2s;
 }
 
 .folder-path-container:hover {
-  background-color: var(--bg-lighter);
+  background-color: #3a3a3a;
+  border-color: #555;
 }
 
 .folder-path-text {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: #ccc;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  width: 100%;
-  padding: 6px 10px;
-  background-color: var(--bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 3px;
-  transition: border-color 0.2s;
+  flex: 1;
+  text-align: center;
 }
 
 .folder-path-container:hover .folder-path-text {
-  border-color: var(--primary-color);
-  color: var(--text-color);
+  color: #fff;
 }
 
 .folder-content {
@@ -1300,6 +1317,7 @@ body {
 /* 탭 바 컨테이너 */
 .tab-bar-container {
   width: 100%;
+  height: 40px;
   background-color: var(--bg-darker);
   border-bottom: 1px solid var(--border-color);
   overflow: hidden;
@@ -1308,7 +1326,7 @@ body {
 /* 탭 바 */
 .tab-bar {
   display: flex;
-  height: 36px;
+  height: 40px;
   background-color: var(--bg-darker);
   overflow-x: auto;
   white-space: nowrap;
@@ -1334,7 +1352,7 @@ body {
   display: flex;
   align-items: center;
   padding: 0 12px;
-  height: 36px;
+  height: 40px;
   background-color: var(--bg-darker);
   border-right: 1px solid var(--border-color);
   color: var(--text-secondary);
@@ -1440,8 +1458,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   background-color: var(--bg-darker);
   color: var(--text-secondary);
   font-size: 18px;
@@ -1699,14 +1717,14 @@ body {
   left: 0;
   right: 0;
   height: 300px;
-  background-color: var(--bg-darker);
-  border-top: 1px solid var(--border-color);
+  background-color: #1e1e1e;
+  border-top: 1px solid #333;
   display: flex;
   flex-direction: column;
-  z-index: 1000;
-  font-family: var(--font-family-ui);
-  color: var(--text-color);
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.2);
+  z-index: 100;
+  color: #e0e0e0;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
 }
 
 .debug-console-header {
@@ -1714,14 +1732,8 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background-color: var(--bg-darker);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.debug-console-header h3 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
+  background-color: #252525;
+  border-bottom: 1px solid #333;
 }
 
 .debug-console-controls {
@@ -1730,47 +1742,66 @@ body {
   align-items: center;
 }
 
-.debug-console-search {
-  background-color: var(--bg-lighter);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-  border-radius: 3px;
-  padding: 4px 8px;
-  font-size: 12px;
-  width: 200px;
-}
-
+.debug-console-search,
 .debug-console-filter {
-  background-color: var(--bg-lighter);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-  border-radius: 3px;
+  background-color: #333;
+  border: 1px solid #444;
+  color: #e0e0e0;
   padding: 4px 8px;
-  font-size: 12px;
-}
-
-.debug-console-controls button {
-  background-color: var(--bg-lighter);
-  color: var(--text-color);
-  border: none;
-  padding: 4px 10px;
   border-radius: 3px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: background-color 0.2s;
-}
-
-.debug-console-controls button:hover {
-  background-color: var(--primary-color);
 }
 
 .debug-console-content {
   flex: 1;
   overflow-y: auto;
-  padding: 10px;
-  font-family: var(--font-family-code);
-  font-size: 13px;
-  color: var(--text-color);
+  padding: 8px;
+  user-select: text;
+}
+
+.log-entry {
+  margin-bottom: 4px;
+  padding: 2px 4px;
+  border-radius: 2px;
+  user-select: text;
+  cursor: text;
+}
+
+.log-timestamp {
+  color: #888;
+  margin-right: 8px;
+  user-select: text;
+}
+
+.log-level {
+  font-weight: bold;
+  margin-right: 8px;
+  user-select: text;
+}
+
+.log-message {
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}
+
+.log-level-error {
+  color: #ff6b6b;
+}
+
+.log-level-warning {
+  color: #ffd166;
+}
+
+.log-level-info {
+  color: #4ecdc4;
+}
+
+.log-level-success {
+  color: #6bff6b;
+}
+
+.log-level-debug {
+  color: #a0a0a0;
 }
 
 .debug-console-footer {
@@ -1778,95 +1809,18 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background-color: var(--bg-darker);
-  border-top: 1px solid var(--border-color);
-  font-size: 12px;
+  background-color: #252525;
+  border-top: 1px solid #333;
 }
 
 .debug-console-status {
-  color: var(--text-secondary);
+  font-size: 12px;
+  color: #888;
 }
 
 .debug-console-actions {
   display: flex;
   gap: 8px;
-}
-
-.debug-console-action {
-  background-color: var(--bg-lighter);
-  color: var(--text-color);
-  border: none;
-  padding: 4px 10px;
-  border-radius: 3px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: background-color 0.2s;
-}
-
-.debug-console-action:hover {
-  background-color: var(--primary-color);
-}
-
-.log-entry {
-  margin-bottom: 4px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  padding-bottom: 2px;
-}
-
-.log-timestamp {
-  color: var(--text-secondary);
-  font-size: 12px;
-  min-width: 80px;
-  user-select: none;
-}
-
-.log-level {
-  font-weight: bold;
-  min-width: 60px;
-  user-select: none;
-}
-
-.log-level-info {
-  color: #4fc1ff;
-}
-
-.log-level-warning {
-  color: #ffcc00;
-}
-
-.log-level-error {
-  color: #ff5252;
-}
-
-.log-level-success {
-  color: #6ccb5f;
-}
-
-.log-level-debug {
-  color: #aaaaaa;
-}
-
-.log-level-terminal {
-  color: #ffffff;
-  font-family: monospace;
-}
-
-.log-level-log {
-  color: #dddddd;
-}
-
-.log-level-history {
-  color: #bb88ff;
-}
-
-.log-message {
-  flex: 1;
 }
 
 /* 찾기/바꾸기 패널 스타일 수정 */
@@ -1976,6 +1930,10 @@ body {
   border-right: 1px solid #444;
   background-color: #1e1e1e;
   overflow: hidden;
+  margin-right: 0;
+  padding-right: 0;
+  outline: none;
+  position: relative;
 }
 
 .file-explorer {
@@ -2092,14 +2050,27 @@ body {
 }
 
 .resize-handle {
-  width: 5px;
+  width: 4px;
   height: 100%;
   cursor: col-resize;
-  background-color: #333;
+  background-color: #444;
+  margin: 0;
+  padding: 0;
+  position: absolute;
+  right: 0;
+  transition: background-color 0.2s;
 }
 
 .resize-handle:hover {
+  width: 4px;
   background-color: #0078d4;
+  z-index: 10;
+}
+
+.resize-handle:active {
+  width: 4px;
+  background-color: #0078d4;
+  z-index: 10;
 }
 
 /* 파일 아이콘 타입별 스타일 */
@@ -2137,4 +2108,34 @@ body {
 
 .file-icon.png, .file-icon.jpg, .file-icon.jpeg, .file-icon.gif, .file-icon.svg {
   background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%234caf50"><path d="M19 5v14H5V5h14m0-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>');
+}
+
+/* 우측 리사이저 */
+.right-resize-handle {
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  background-color: #444;
+  margin: 0;
+  padding: 0;
+  position: absolute;
+  right: -4px;
+  top: 0;
+  transition: background-color 0.2s;
+  z-index: 100;
+}
+
+.right-resize-handle:hover,
+.right-resize-handle:active {
+  width: 8px;
+  background-color: #0078d4;
+  z-index: 100;
+}
+
+.folder-item.selected {
+  background-color: #264f78;
+}
+
+.folder-item.selected .folder-icon::before {
+  filter: brightness(1.2);
 }

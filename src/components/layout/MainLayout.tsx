@@ -40,7 +40,21 @@ const MainLayout: React.FC = () => {
     path: null
   });
 
-  // 파일 선택 핸들러
+  // 폴더 선택 핸들러 (폴더를 열지 않고 선택만 함)
+  const handleFolderClick = (folderPath: string) => {
+    // 폴더 선택만 하고 열지는 않음
+    fileSystem.setSelectedFilePath(folderPath);
+    console.log('폴더 선택됨 (열지 않음):', folderPath);
+  };
+
+  // 파일 선택 핸들러 (파일을 열지 않고 선택만 함)
+  const handleFileClick = (filePath: string) => {
+    // 파일 선택만 하고 열지는 않음
+    fileSystem.setSelectedFilePath(filePath);
+    console.log('파일 선택됨 (열지 않음):', filePath);
+  };
+
+  // 파일 선택 핸들러 (파일을 열음)
   const handleFileSelect = async (filePath: string) => {
     try {
       // 이미 열린 파일인지 확인
@@ -167,29 +181,50 @@ const MainLayout: React.FC = () => {
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
       if (layout.isDraggingFolderPanel) {
-        // 최소 너비 200px, 최대 너비는 화면 너비의 50%로 제한
-        const minWidth = 200;
-        const maxWidth = Math.max(minWidth, window.innerWidth * 0.5);
-        const newWidth = Math.min(maxWidth, Math.max(minWidth, e.clientX));
+        const minWidth = 200; // 최소 너비
+        const maxWidth = window.innerWidth * 0.5; // 최대 너비 (화면의 50%)
+        
+        // 새 너비 계산
+        let newWidth = e.clientX;
+        
+        // 최소/최대 너비 제한
+        if (newWidth < minWidth) newWidth = minWidth;
+        if (newWidth > maxWidth) newWidth = maxWidth;
+        
         layout.setFolderPanelWidth(newWidth);
       }
       
       if (layout.isDraggingBottomPanel) {
-        // 최소 높이 100px, 최대 높이는 화면 높이의 50%로 제한
         const minHeight = 100;
-        const maxHeight = Math.max(minHeight, window.innerHeight * 0.5);
-        const newHeight = Math.min(maxHeight, Math.max(minHeight, window.innerHeight - e.clientY));
-        layout.setBottomPanelHeight(newHeight);
+        const maxHeight = window.innerHeight * 0.7;
+        
+        const newHeight = window.innerHeight - e.clientY;
+        
+        if (newHeight >= minHeight && newHeight <= maxHeight) {
+          layout.setBottomPanelHeight(newHeight);
+        }
       }
     };
     
     const handleGlobalMouseUp = () => {
       if (layout.isDraggingFolderPanel) {
         layout.setIsDraggingFolderPanel(false);
+        
+        // 커서 스타일 원래대로
+        document.body.style.cursor = '';
+        
+        // 선택 방지 해제
+        document.body.style.userSelect = '';
       }
       
       if (layout.isDraggingBottomPanel) {
         layout.setIsDraggingBottomPanel(false);
+        
+        // 커서 스타일 원래대로
+        document.body.style.cursor = '';
+        
+        // 선택 방지 해제
+        document.body.style.userSelect = '';
       }
     };
     
@@ -399,7 +434,14 @@ const MainLayout: React.FC = () => {
   // 폴더 패널 리사이저 드래그 시작
   const handleFolderPanelResizerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     layout.setIsDraggingFolderPanel(true);
+    
+    // 드래그 중에는 커서 스타일 변경
+    document.body.style.cursor = 'col-resize';
+    
+    // 선택 방지
+    document.body.style.userSelect = 'none';
   };
 
   // 하단 패널 리사이저 드래그 시작
@@ -415,6 +457,19 @@ const MainLayout: React.FC = () => {
       if (parentPath) {
         fileSystem.loadFolderStructure(parentPath);
       }
+    }
+  };
+
+  // 폴더 지정 버튼 클릭 핸들러
+  const handleBrowseFolder = async () => {
+    try {
+      const selectedFolder = await fileSystem.showOpenFolderDialog();
+      if (selectedFolder) {
+        await fileSystem.loadFolderStructure(selectedFolder);
+      }
+    } catch (error) {
+      console.error('폴더 지정 오류:', error);
+      toast.showToast(`폴더를 지정할 수 없습니다: ${error}`, 'error');
     }
   };
 
@@ -494,7 +549,8 @@ const MainLayout: React.FC = () => {
       
       // 삭제 전 확인 (자동 스냅샷이 아닌 경우)
       if (snapshot.type !== timeline.SnapshotType.AUTO) {
-        if (!window.confirm(`"${snapshot.description}" 스냅샷을 삭제하시겠습니까?`)) {
+        const confirmDelete = window.confirm(`"${snapshot.description}" 스냅샷을 삭제하시겠습니까?`);
+        if (!confirmDelete) {
           return;
         }
       }
@@ -892,8 +948,9 @@ const MainLayout: React.FC = () => {
             fileSystem.setSelectedFilePath(newPath);
           }
           
-          // 폴더 구조 새로고침
+          // 폴더 구조 새로고침 (현재 폴더 경로 사용)
           await fileSystem.loadFolderStructure();
+          console.log('파일 이름 변경 후 폴더 구조 새로고침 완료');
         }
       } catch (error) {
         console.error('파일 이름 변경 오류:', error);
@@ -905,43 +962,118 @@ const MainLayout: React.FC = () => {
   // 파일 삭제
   const handleDeleteFile = async (path: string) => {
     const fileName = path.split(/[/\\]/).pop() || '';
+    
+    // 삭제 확인 대화상자
     const confirmDelete = window.confirm(`정말로 "${fileName}"을(를) 삭제하시겠습니까?`);
     
-    if (confirmDelete) {
-      try {
-        const success = await fileSystem.deleteFile(path);
+    // 사용자가 취소를 선택한 경우 함수 종료
+    if (!confirmDelete) {
+      return;
+    }
+    
+    try {
+      const success = await fileSystem.deleteFile(path);
+      
+      if (success) {
+        toast.showToast('파일이 삭제되었습니다.', 'success');
+        logging.addToHistory(`파일 삭제: ${path}`);
         
-        if (success) {
-          toast.showToast('파일이 삭제되었습니다.', 'success');
-          logging.addToHistory(`파일 삭제: ${path}`);
-          
-          // 현재 열려있는 파일이면 탭 닫기
-          if (path === fileSystem.selectedFilePath) {
-            // 해당 경로의 탭 찾기
-            const tabToClose = tabs.tabs.find(tab => tab.path === path);
-            if (tabToClose) {
-              // 탭 닫기 처리
-              const newTabs = tabs.tabs.filter(tab => tab.path !== path);
-              tabs.setTabs(newTabs);
-              
-              // 다른 탭이 있으면 활성화
-              if (newTabs.length > 0) {
-                tabs.activateTab(newTabs[0].id);
-                fileSystem.setSelectedFilePath(newTabs[0].path);
-              } else {
-                tabs.activateTab(''); // 빈 문자열 또는 유효하지 않은 ID를 전달하여 활성 탭 없음 상태로 만듦
-                fileSystem.setSelectedFilePath(null);
-              }
+        // 현재 열려있는 파일이면 탭 닫기
+        if (path === fileSystem.selectedFilePath) {
+          // 해당 경로의 탭 찾기
+          const tabToClose = tabs.tabs.find(tab => tab.path === path);
+          if (tabToClose) {
+            // 탭 닫기 처리
+            const newTabs = tabs.tabs.filter(tab => tab.path !== path);
+            tabs.setTabs(newTabs);
+            
+            // 다른 탭이 있으면 활성화
+            if (newTabs.length > 0) {
+              tabs.activateTab(newTabs[0].id);
+              fileSystem.setSelectedFilePath(newTabs[0].path);
+            } else {
+              tabs.activateTab(''); // 빈 문자열 또는 유효하지 않은 ID를 전달하여 활성 탭 없음 상태로 만듦
+              fileSystem.setSelectedFilePath(null);
             }
           }
-          
-          // 폴더 구조 새로고침
-          await fileSystem.loadFolderStructure();
         }
-      } catch (error) {
-        console.error('파일 삭제 오류:', error);
-        toast.showToast('파일 삭제 중 오류가 발생했습니다.', 'error');
+        
+        // 폴더 구조 새로고침 (현재 폴더 경로 사용)
+        await fileSystem.loadFolderStructure();
+        console.log('파일 삭제 후 폴더 구조 새로고침 완료');
       }
+    } catch (error) {
+      console.error('파일 삭제 오류:', error);
+      toast.showToast('파일 삭제 중 오류가 발생했습니다.', 'error');
+    }
+  };
+
+  // 파일 붙여넣기
+  const handlePasteFile = async (targetFolderPath: string) => {
+    // 클립보드에 파일 경로가 없으면 무시
+    if (!clipboard.path || !clipboard.action) {
+      toast.showToast('붙여넣을 파일이 없습니다.', 'warning');
+      return;
+    }
+
+    try {
+      const fileName = clipboard.path.split(/[/\\]/).pop() || '';
+      const newPath = `${targetFolderPath}/${fileName}`;
+      
+      // 같은 경로에 붙여넣기 시도하면 무시
+      if (clipboard.path === newPath) {
+        toast.showToast('같은 위치에 붙여넣을 수 없습니다.', 'warning');
+        return;
+      }
+      
+      let success = false;
+      
+      if (clipboard.action === 'copy') {
+        // 파일 복사
+        success = await fileSystem.copyFileToDestination(clipboard.path, newPath);
+        if (success) {
+          toast.showToast('파일이 복사되었습니다.', 'success');
+          logging.addToHistory(`파일 복사: ${clipboard.path} → ${newPath}`);
+        }
+      } else if (clipboard.action === 'cut') {
+        // 파일 이동 (이름 변경으로 구현)
+        success = await fileSystem.renameFileOrFolder(clipboard.path, newPath);
+        if (success) {
+          toast.showToast('파일이 이동되었습니다.', 'success');
+          logging.addToHistory(`파일 이동: ${clipboard.path} → ${newPath}`);
+          
+          // 현재 열려있는 파일이면 탭 업데이트
+          if (clipboard.path === fileSystem.selectedFilePath) {
+            // 현재 열려있는 탭 업데이트
+            const updatedTabs = tabs.tabs.map(tab => {
+              if (tab.path === clipboard.path) {
+                return { ...tab, path: newPath, title: fileName };
+              }
+              return tab;
+            });
+            
+            // 탭 업데이트 및 활성화
+            const tabToActivate = updatedTabs.find(tab => tab.path === newPath);
+            if (tabToActivate) {
+              tabs.activateTab(tabToActivate.id);
+            }
+            tabs.setTabs(updatedTabs);
+            fileSystem.setSelectedFilePath(newPath);
+          }
+          
+          // 잘라내기 후 붙여넣기가 완료되면 클립보드 초기화
+          setClipboard({ action: null, path: null });
+        }
+      }
+      
+      // 폴더 구조 새로고침
+      if (success) {
+        await fileSystem.loadFolderStructure();
+        console.log('파일 붙여넣기 후 폴더 구조 새로고침 완료');
+      }
+    } catch (error) {
+      console.error('파일 붙여넣기 오류:', error);
+      toast.showToast('파일 붙여넣기 중 오류가 발생했습니다.', 'error');
     }
   };
 
@@ -1215,30 +1347,38 @@ const MainLayout: React.FC = () => {
       <div className="main-content">
         {/* 파일 탐색기 */}
         {layout.showFolderPanel && (
-          <div className="file-explorer-panel" style={{ width: `${layout.folderPanelWidth}px` }}>
+          <div className="file-explorer-panel" style={{ width: `${layout.folderPanelWidth}px`, maxWidth: `${layout.folderPanelWidth}px` }}>
             <FileExplorer
               folderPath={fileSystem.folderPath}
               folderStructure={fileSystem.folderStructure}
               selectedFilePath={fileSystem.selectedFilePath}
               onFileSelect={handleFileSelect}
+              onFileClick={handleFileClick}
               onFolderSelect={handleFolderSelect}
+              onFolderClick={handleFolderClick}
               onParentFolderClick={handleParentFolderClick}
+              onBrowseFolder={handleBrowseFolder}
               hasParentFolder={fileSystem.hasParentFolder}
               folderPanelWidth={layout.folderPanelWidth}
               onCut={handleCutFile}
               onCopy={handleCopyFile}
               onRename={handleRenameFile}
               onDelete={handleDeleteFile}
+              onPaste={handlePasteFile}
             />
             <div
-              className="resize-handle"
+              className="resize-handle right-resize-handle"
               onMouseDown={handleFolderPanelResizerMouseDown}
-            />
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+            ></div>
           </div>
         )}
         
         {/* 에디터 영역 */}
-        <div className="editor-workspace">
+        <div className="editor-workspace" style={{ marginLeft: 0, paddingLeft: 0, position: 'relative' }}>
           {/* 탭 바 */}
           <TabBar
             tabs={tabs.tabs}
@@ -1271,71 +1411,6 @@ const MainLayout: React.FC = () => {
               showLineNumbers={editor.showLineNumbers}
               showMinimap={editor.showMinimap}
             />
-          )}
-          
-          {/* 찾기/바꾸기 패널 */}
-          {findReplaceVisible && (
-            <div className="find-replace-bar">
-              {/* 찾기 결과 카운트 */}
-              <div className="find-replace-header">
-                <span className="find-replace-title">찾기/바꾸기</span>
-                {editor.findResults.total > 0 && (
-                  <span className="find-results-count">
-                    {editor.findResults.current} / {editor.findResults.total}
-                  </span>
-                )}
-              </div>
-              
-              <div className="find-replace-group">
-                <input 
-                  type="text" 
-                  className="find-replace-input" 
-                  placeholder="찾기" 
-                  value={editor.findText} 
-                  onChange={(e) => editor.setFindText(e.target.value)} 
-                />
-                <button className="find-button" onClick={() => editor.findNext()}>다음 찾기</button>
-                <button className="find-button" onClick={() => editor.findPrevious()}>이전 찾기</button>
-              </div>
-              <div className="find-replace-group">
-                <input 
-                  type="text" 
-                  className="find-replace-input" 
-                  placeholder="바꾸기" 
-                  value={editor.replaceText} 
-                  onChange={(e) => editor.setReplaceText(e.target.value)} 
-                />
-                <button className="find-button" onClick={() => editor.replace()}>바꾸기</button>
-                <button className="find-button" onClick={() => editor.replaceAll()}>모두 바꾸기</button>
-              </div>
-              <div className="find-replace-options">
-                <label className="find-option">
-                  <input 
-                    type="checkbox" 
-                    checked={editor.matchCase} 
-                    onChange={(e) => editor.setMatchCase(e.target.checked)} 
-                  />
-                  <span>대소문자 구분</span>
-                </label>
-                <label className="find-option">
-                  <input 
-                    type="checkbox" 
-                    checked={editor.wholeWord} 
-                    onChange={(e) => editor.setWholeWord(e.target.checked)} 
-                  />
-                  <span>단어 단위 일치</span>
-                </label>
-                <label className="find-option">
-                  <input 
-                    type="checkbox" 
-                    checked={editor.useRegex} 
-                    onChange={(e) => editor.setUseRegex(e.target.checked)} 
-                  />
-                  <span>정규식 사용</span>
-                </label>
-              </div>
-              <button className="close-find-replace" onClick={toggleFindReplace}>×</button>
-            </div>
           )}
         </div>
       </div>
@@ -1471,11 +1546,32 @@ const MainLayout: React.FC = () => {
                 <div 
                   key={index} 
                   className={`log-entry log-level-${log.level.toLowerCase()}`}
-                  style={logging.getLogLevelStyle(log.level)}
+                  style={{
+                    ...logging.getLogLevelStyle(log.level),
+                    userSelect: 'text',
+                    cursor: 'text',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-all'
+                  }}
                 >
-                  <span className="log-timestamp">{log.timestamp}</span>
-                  <span className="log-level">[{log.level}]</span>
-                  <span className="log-message">{log.message}</span>
+                  <span 
+                    className="log-timestamp"
+                    style={{ userSelect: 'text' }}
+                  >
+                    {log.timestamp}
+                  </span>
+                  <span 
+                    className="log-level"
+                    style={{ userSelect: 'text' }}
+                  >
+                    [{log.level}]
+                  </span>
+                  <span 
+                    className="log-message"
+                    style={{ userSelect: 'text' }}
+                  >
+                    {log.message}
+                  </span>
                 </div>
               ))
             }
