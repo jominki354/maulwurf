@@ -24,10 +24,250 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
   showLineNumbers,
   showMinimap
 }) => {
+  // 에디터 참조
+  const editorRef = useRef<any>(null);
+  // 커서 상태 추적을 위한 참조
+  const cursorStateRef = useRef({
+    position: { lineNumber: 1, column: 1 },
+    selection: null as monaco.Selection | null,
+    hasFocus: false
+  });
+  
+  // 실행 취소/다시 실행 상태 관리
+  const undoStackRef = useRef<{
+    undoStack: string[];
+    redoStack: string[];
+    currentContent: string;
+    isUndoRedoOperation: boolean;
+    lastCursorPosition: monaco.Position | null;
+  }>({
+    undoStack: [],
+    redoStack: [],
+    currentContent: value || '',
+    isUndoRedoOperation: false,
+    lastCursorPosition: null
+  });
+  
+  // 실행 취소 함수
+  const handleUndo = useCallback(() => {
+    if (editorRef.current) {
+      try {
+        console.log('[실행 취소] 모나코 에디터 실행 취소 시작');
+        
+        // 현재 커서 위치 저장
+        undoStackRef.current.lastCursorPosition = editorRef.current.getPosition();
+        
+        // 모나코 에디터의 실행 취소 기능 사용
+        editorRef.current.trigger('keyboard', 'undo', null);
+        
+        // 실행 취소 후 로그
+        console.log('[실행 취소] 모나코 에디터 실행 취소 완료');
+        
+        // 포커스 유지
+        setTimeout(() => {
+          if (editorRef.current) {
+            editorRef.current.focus();
+          }
+        }, 0);
+      } catch (error) {
+        console.error('[실행 취소] 오류 발생:', error);
+      }
+    } else {
+      console.log('[실행 취소] 에디터 참조 없음');
+    }
+  }, []);
+  
+  // 다시 실행 함수
+  const handleRedo = useCallback(() => {
+    if (editorRef.current) {
+      try {
+        console.log('[다시 실행] 모나코 에디터 다시 실행 시작');
+        
+        // 현재 커서 위치 저장
+        undoStackRef.current.lastCursorPosition = editorRef.current.getPosition();
+        
+        // 모나코 에디터의 다시 실행 기능 사용
+        editorRef.current.trigger('keyboard', 'redo', null);
+        
+        // 다시 실행 후 로그
+        console.log('[다시 실행] 모나코 에디터 다시 실행 완료');
+        
+        // 포커스 유지
+        setTimeout(() => {
+          if (editorRef.current) {
+            editorRef.current.focus();
+          }
+        }, 0);
+      } catch (error) {
+        console.error('[다시 실행] 오류 발생:', error);
+      }
+    } else {
+      console.log('[다시 실행] 에디터 참조 없음');
+    }
+  }, []);
+  
+  // 에디터 내용 변경 핸들러
+  const handleEditorChange = (newValue: string | undefined) => {
+    // 변경 전 커서 위치 저장
+    let cursorPositionBefore = null;
+    let selectionBefore = null;
+    
+    if (editorRef.current) {
+      cursorPositionBefore = editorRef.current.getPosition();
+      selectionBefore = editorRef.current.getSelection();
+      console.log('[에디터 변경 전] 커서 위치:', cursorPositionBefore, '선택 영역:', selectionBefore);
+    }
+    
+    // 부모 컴포넌트의 onChange 호출
+    onChange(newValue);
+    
+    // 변경 후 커서 위치 확인
+    setTimeout(() => {
+      if (editorRef.current) {
+        const cursorPositionAfter = editorRef.current.getPosition();
+        const selectionAfter = editorRef.current.getSelection();
+        
+        console.log('[에디터 변경 후] 커서 위치:', cursorPositionAfter, '선택 영역:', selectionAfter, 
+          '위치 유지됨:', 
+          cursorPositionBefore && cursorPositionAfter && 
+          cursorPositionBefore.lineNumber === cursorPositionAfter.lineNumber && 
+          cursorPositionBefore.column === cursorPositionAfter.column
+        );
+        
+        // 포커스 상태 확인
+        const hasFocus = document.activeElement === editorRef.current.getDomNode();
+        console.log('[에디터 변경 후] 포커스 상태:', hasFocus);
+        
+        // 포커스가 없으면 다시 설정
+        if (!hasFocus) {
+          console.log('[에디터 변경 후] 포커스 재설정 시도');
+          editorRef.current.focus();
+        }
+      }
+    }, 0);
+    
+    // 현재 커서 상태 로깅
+    if (editorRef.current) {
+      const position = editorRef.current.getPosition();
+      const selection = editorRef.current.getSelection();
+      console.log('[에디터 내용 변경] 커서 위치:', position, '선택 영역:', selection);
+    }
+    
+    // 에디터 내용 변경 이벤트 발생
+    if (editorRef.current) {
+      const model = editorRef.current.getModel();
+      if (model) {
+        const filePath = model.uri?.path || '';
+        const fileName = filePath.split('/').pop() || '새 파일';
+        const tabId = model.uri?.toString() || '';
+        
+        // 이벤트 발생 - 커스텀 이벤트 객체 생성
+        const customEvent = new CustomEvent('content-changed', {
+          detail: {
+            tabId,
+            content: newValue || '',
+            fileName,
+            filePath,
+            cursorPosition: editorRef.current.getPosition()
+          }
+        });
+        
+        // 이벤트 발생 - 직접 window 객체에 디스패치
+        window.dispatchEvent(customEvent);
+      }
+    }
+  };
+  
   // 에디터 마운트 후 추가 설정을 위한 핸들러
   const handleEditorDidMount = (editor: any, monaco: Monaco) => {
+    // 에디터 참조 저장
+    editorRef.current = editor;
+    console.log('[에디터 마운트] 에디터 인스턴스 생성됨');
+    
+    // 에디터에 포커스 설정
+    setTimeout(() => {
+      if (editor) {
+        editor.focus();
+        console.log('[에디터 마운트] 에디터에 포커스 설정됨');
+      }
+    }, 100);
+    
+    // 실행 취소/다시 실행 단축키 등록
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyZ, () => {
+      console.log('[키보드 단축키] Ctrl+Z (실행 취소)');
+      handleUndo();
+    });
+    
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyZ, () => {
+      console.log('[키보드 단축키] Ctrl+Shift+Z (다시 실행)');
+      handleRedo();
+    });
+    
+    // 또는 Ctrl+Y로 다시 실행 (Windows 스타일)
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyY, () => {
+      console.log('[키보드 단축키] Ctrl+Y (다시 실행)');
+      handleRedo();
+    });
+    
     // 기존 onMount 콜백 호출
     onMount(editor, monaco);
+    
+    // 커서 위치 변경 이벤트 리스너
+    editor.onDidChangeCursorPosition((e: monaco.editor.ICursorPositionChangedEvent) => {
+      const position = { lineNumber: e.position.lineNumber, column: e.position.column };
+      cursorStateRef.current.position = position;
+      console.log('[커서 위치 변경]', position, '이전 위치:', e.secondaryPositions);
+    });
+    
+    // 선택 영역 변경 이벤트 리스너
+    editor.onDidChangeCursorSelection((e: monaco.editor.ICursorSelectionChangedEvent) => {
+      cursorStateRef.current.selection = e.selection;
+      console.log('[선택 영역 변경]', e.selection, '이전 선택:', e.secondarySelections);
+    });
+    
+    // 포커스 이벤트 리스너
+    editor.onDidFocusEditorText(() => {
+      cursorStateRef.current.hasFocus = true;
+      console.log('[에디터 포커스] 에디터가 포커스를 얻음');
+    });
+    
+    // 포커스 해제 이벤트 리스너
+    editor.onDidBlurEditorText(() => {
+      cursorStateRef.current.hasFocus = false;
+      console.log('[에디터 포커스 해제] 에디터가 포커스를 잃음');
+      
+      // 포커스 해제 후 자동으로 다시 포커스 설정 (필요한 경우)
+      setTimeout(() => {
+        // 다른 입력 요소에 포커스가 없는 경우에만 에디터에 다시 포커스
+        const activeElement = document.activeElement;
+        const isInputElement = activeElement instanceof HTMLInputElement || 
+                              activeElement instanceof HTMLTextAreaElement || 
+                              (activeElement && (activeElement as HTMLElement).isContentEditable);
+        
+        if (!isInputElement && editor) {
+          console.log('[에디터 포커스 복구] 자동 포커스 시도');
+          editor.focus();
+        }
+      }, 10);
+    });
+    
+    // 에디터 내용 변경 이벤트 리스너
+    editor.onDidChangeModelContent((e: monaco.editor.IModelContentChangedEvent) => {
+      console.log('[모델 내용 변경]', e.changes, '커서 위치:', editor.getPosition());
+      
+      // 내용 변경 후 포커스 확인 및 복구
+      setTimeout(() => {
+        if (editor) {
+          const hasFocus = document.activeElement === editor.getDomNode();
+          console.log('[모델 내용 변경 후] 포커스 상태:', hasFocus);
+          
+          if (!hasFocus) {
+            console.log('[모델 내용 변경 후] 포커스 복구 시도');
+            editor.focus();
+          }
+        }
+      }, 0);
+    });
     
     // 에디터 여백 설정
     editor.updateOptions({
@@ -81,29 +321,45 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
           [/;.*$/, 'comment'],
           [/\(.*?\)/, 'comment'],
           
-          // G 코드 (G0, G1, G2, G3 등)
+          // 기본 이동 G 코드
           [/\b(G0|G00)\b/, 'gcode.rapid'],
           [/\b(G1|G01)\b/, 'gcode.linear'],
           [/\b(G2|G02|G3|G03)\b/, 'gcode.arc'],
-          [/\b(G17|G18|G19|G20|G21|G28|G90|G91|G92)\b/, 'gcode.settings'],
-          [/\b(G4[0-9]|G5[0-9]|G7[0-3])\b/, 'gcode.settings'],
           
-          // M 코드
-          [/\b(M0[0-9]|M1[0-9]|M2[0-9]|M3[0-9]|M5|M6|M8|M9)\b/, 'gcode.mcode'],
-          [/\b(M0|M1|M2|M3|M4|M5|M6|M8|M9|M30)\b/, 'gcode.mcode'],
+          // 공구 보정 관련 G 코드 (FANUC)
+          [/\b(G40|G41|G42|G43|G44|G49)\b/, 'gcode.compensation'],
           
-          // 좌표값
-          [/\b[XYZ]-?[0-9]*\.?[0-9]+\b/, 'gcode.coordinate'],
+          // 공작물 좌표계 (FANUC)
+          [/\b(G53|G54|G55|G56|G57|G58|G59|G54\.1|GP1|GP2|GP3|GP4)\b/, 'gcode.workpiece'],
           
-          // 피드 레이트 및 스핀들 속도
-          [/\bF-?[0-9]*\.?[0-9]+\b/, 'gcode.feed'],
-          [/\bS-?[0-9]*\.?[0-9]+\b/, 'gcode.spindle'],
+          // 평면 선택 및 단위 설정
+          [/\b(G17|G18|G19|G20|G21)\b/, 'gcode.plane'],
           
-          // 기타 파라미터
-          [/\b[IJKPQR]-?[0-9]*\.?[0-9]+\b/, 'gcode.parameter'],
+          // 좌표계 및 이동 모드
+          [/\b(G90|G91|G92|G28|G30)\b/, 'gcode.coordinate-sys'],
+          
+          // 고정 사이클 (FANUC)
+          [/\b(G70|G71|G72|G73|G74|G75|G76|G80|G81|G82|G83|G84|G85|G86|G87|G88|G89)\b/, 'gcode.cycle'],
+          
+          // 기타 G 코드
+          [/\bG\d+\.?\d*\b/, 'gcode.other'],
+          
+          // M 코드 (FANUC)
+          [/\b(M0|M1|M2|M3|M4|M5|M6|M8|M9|M30|M98|M99)\b/, 'gcode.mcode-common'],
+          [/\bM\d+\.?\d*\b/, 'gcode.mcode'],
+          
+          // 좌표값과 파라미터
+          [/[XYZIJKPQR]-?\d*\.?\d+/, 'gcode.coordinate'],
+          [/[FS]-?\d*\.?\d+/, 'gcode.parameter'],
+          [/[DH]\d+/, 'gcode.tool-comp'],
+          [/P\d+/, 'gcode.parameter'],
+          
+          // 프로그램 번호 및 시퀀스 번호
+          [/O\d+/, 'gcode.program'],
+          [/N\d+/, 'gcode.sequence'],
           
           // 숫자
-          [/\b[0-9]+\b/, 'number'],
+          [/-?\d*\.?\d+/, 'number'],
           
           // 기타 텍스트
           [/\w+/, 'identifier'],
@@ -117,17 +373,24 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
       inherit: true,
       rules: [
         { token: 'comment', foreground: '6A9955', fontStyle: 'italic' },
-        { token: 'gcode.rapid', foreground: 'FF5252', fontStyle: 'bold' },
-        { token: 'gcode.linear', foreground: '4FC1FF', fontStyle: 'bold' },
-        { token: 'gcode.arc', foreground: '9CDCFE', fontStyle: 'bold' },
-        { token: 'gcode.settings', foreground: 'C586C0', fontStyle: 'bold' },
-        { token: 'gcode.mcode', foreground: 'DCDCAA', fontStyle: 'bold' },
-        { token: 'gcode.coordinate', foreground: '4EC9B0', fontStyle: 'bold' },
-        { token: 'gcode.feed', foreground: 'CE9178', fontStyle: 'bold' },
-        { token: 'gcode.spindle', foreground: 'B5CEA8', fontStyle: 'bold' },
-        { token: 'gcode.parameter', foreground: 'D7BA7D', fontStyle: 'bold' },
-        { token: 'number', foreground: 'B5CEA8' },
-        { token: 'identifier', foreground: 'D4D4D4' }
+        { token: 'gcode.rapid', foreground: 'FF6B6B', fontStyle: 'bold' },
+        { token: 'gcode.linear', foreground: '4ECDC4', fontStyle: 'bold' },
+        { token: 'gcode.arc', foreground: '95E1D3', fontStyle: 'bold' },
+        { token: 'gcode.compensation', foreground: 'FFB347', fontStyle: 'bold' },
+        { token: 'gcode.workpiece', foreground: 'FFA07A', fontStyle: 'bold' },
+        { token: 'gcode.plane', foreground: 'A8E6CF', fontStyle: 'bold' },
+        { token: 'gcode.coordinate-sys', foreground: 'B8F2E6', fontStyle: 'bold' },
+        { token: 'gcode.cycle', foreground: 'FFA07A', fontStyle: 'bold' },
+        { token: 'gcode.other', foreground: 'AEC6CF', fontStyle: 'bold' },
+        { token: 'gcode.mcode-common', foreground: 'FFD93D', fontStyle: 'bold' },
+        { token: 'gcode.mcode', foreground: 'FFE156', fontStyle: 'bold' },
+        { token: 'gcode.coordinate', foreground: '98DDCA', fontStyle: 'bold' },
+        { token: 'gcode.parameter', foreground: 'FFB7B2', fontStyle: 'bold' },
+        { token: 'gcode.tool-comp', foreground: 'FF9AA2', fontStyle: 'bold' },
+        { token: 'gcode.program', foreground: 'DDA0DD', fontStyle: 'bold' },
+        { token: 'gcode.sequence', foreground: 'E0BBE4', fontStyle: 'bold' },
+        { token: 'number', foreground: 'C7F9CC' },
+        { token: 'identifier', foreground: 'E2F0CB' }
       ],
       colors: {
         'editor.background': '#1E1E1E',
@@ -201,124 +464,180 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
     // G코드 호버 제공자 추가
     monaco.languages.registerHoverProvider('gcode', {
       provideHover: function(model, position) {
-        const word = model.getWordAtPosition(position);
-        
-        if (!word) return null;
-        
-        // 현재 라인의 텍스트 가져오기
         const lineContent = model.getLineContent(position.lineNumber);
         
-        // 현재 위치에 있는 코드 찾기
-        let currentCode = null;
-        let codeRange = null;
+        // 라인 전체를 블록으로 처리
+        const hoverRange = {
+          startLineNumber: position.lineNumber,
+          startColumn: 1,
+          endLineNumber: position.lineNumber,
+          endColumn: lineContent.length + 1
+        };
         
-        // 1. 정확한 G코드 또는 M코드 패턴 찾기 (G0, G1, M3 등)
-        const gcodePattern = /([GM]\d+)/gi;
-        const matches = [...lineContent.matchAll(gcodePattern)];
+        // 프로그램 번호, N번호, 좌표값 추출
+        const programMatch = lineContent.match(/O(\d+)/);
+        const nNumberMatch = lineContent.match(/N(\d+)/);
+        const coordMatches: Record<string, RegExpMatchArray | null> = {
+          X: lineContent.match(/X(-?\d*\.?\d+)/),
+          Y: lineContent.match(/Y(-?\d*\.?\d+)/),
+          Z: lineContent.match(/Z(-?\d*\.?\d+)/),
+          I: lineContent.match(/I(-?\d*\.?\d+)/),
+          J: lineContent.match(/J(-?\d*\.?\d+)/),
+          K: lineContent.match(/K(-?\d*\.?\d+)/),
+          F: lineContent.match(/F(-?\d*\.?\d+)/),
+          S: lineContent.match(/S(-?\d*\.?\d+)/),
+          H: lineContent.match(/H(\d+)/),
+          D: lineContent.match(/D(\d+)/),
+          P: lineContent.match(/P(\d+)/)
+        };
+
+        // G코드와 M코드 추출
+        const gcodeMatches = lineContent.match(/G\d+\.?\d*|GP\d+/g) || [];
+        const mcodeMatches = lineContent.match(/M\d+/g) || [];
         
-        for (const match of matches) {
-          const start = match.index || 0;
-          const end = start + match[0].length;
-          
-          if (position.column >= start + 1 && position.column <= end + 1) {
-            currentCode = match[0];
-            codeRange = new monaco.Range(
-              position.lineNumber,
-              start + 1,
-              position.lineNumber,
-              end + 1
-            );
-            break;
-          }
+        const lineInfo = [];
+        
+        // 프로그램 번호 추가
+        if (programMatch) {
+          lineInfo.push(`### 프로그램 번호\nO${programMatch[1]}`);
         }
         
-        // 2. 좌표 또는 파라미터 패턴 찾기 (X, Y, Z, I, J, K, F, S, P, R, T)
-        if (!currentCode) {
-          const paramPattern = /([XYZIJKFSPRT])-?\d*\.?\d+/gi;
-          const paramMatches = [...lineContent.matchAll(paramPattern)];
-          
-          for (const match of paramMatches) {
-            const start = match.index || 0;
-            const end = start + match[0].length;
-            
-            if (position.column >= start + 1 && position.column <= end + 1) {
-              // 파라미터 코드만 추출 (숫자 제외)
-              currentCode = match[0].charAt(0);
-              codeRange = new monaco.Range(
-                position.lineNumber,
-                start + 1,
-                position.lineNumber,
-                start + 2 // 첫 글자만 (X, Y, Z 등)
-              );
-              break;
-            }
-          }
+        // N번호 추가
+        if (nNumberMatch) {
+          lineInfo.push(`### 블록 번호\nN${nNumberMatch[1]}`);
         }
         
-        // 3. 한 줄로 이어진 G코드 처리 (G90G55X121.Y-16.75S4000M3 등)
-        if (!currentCode && lineContent.match(/[GM]\d+[GM\d\.XYZIJKFSPRT\-]+/i)) {
-          // 현재 커서 위치에서 가장 가까운 코드 찾기
-          const codes = parseGCodeLine(lineContent);
-          
-          // 각 코드의 위치 찾기
-          for (const code of codes) {
-            const codeIndex = lineContent.toUpperCase().indexOf(code.toUpperCase());
-            if (codeIndex >= 0) {
-              const start = codeIndex;
-              const end = start + code.length;
-              
-              // 커서가 코드 근처에 있는지 확인 (약간의 여유 허용)
-              const cursorPos = position.column - 1;
-              if (Math.abs(cursorPos - start) <= 3 || (cursorPos >= start && cursorPos <= end)) {
-                currentCode = code;
-                codeRange = new monaco.Range(
-                  position.lineNumber,
-                  start + 1,
-                  position.lineNumber,
-                  end + 1
-                );
-                break;
+        // G코드 분석
+        if (gcodeMatches.length > 0) {
+          lineInfo.push('### G코드');
+          gcodeMatches.forEach(code => {
+            const def = findGCodeDefinition(code);
+            if (def) {
+              if (def.brand) {
+                lineInfo.push(`**${code}**: ${def.description}\n_${def.brand}_`);
+              } else {
+                lineInfo.push(`**${code}**: ${def.description}`);
               }
             }
-          }
+          });
         }
         
-        // 코드 정의 찾기
-        if (currentCode) {
-          const definition = findGCodeDefinition(currentCode);
-          
-          if (definition) {
-            // 브랜드 정보가 있으면 표시
-            const brandInfo = definition.brand ? ` (${definition.brand})` : '';
-            
-            // 간소화된 툴팁 레이아웃
-            return {
-              range: codeRange || new monaco.Range(
-                position.lineNumber,
-                position.column - (word.word.length / 2),
-                position.lineNumber,
-                position.column + (word.word.length / 2)
-              ),
-              contents: [
-                { value: `**${definition.code}${brandInfo}**: ${definition.description}` },
-                { value: definition.details || '' }
-              ]
-            };
-          }
+        // M코드 분석
+        if (mcodeMatches.length > 0) {
+          lineInfo.push('### M코드');
+          mcodeMatches.forEach(code => {
+            const def = findGCodeDefinition(code);
+            if (def) {
+              if (def.brand) {
+                lineInfo.push(`**${code}**: ${def.description}\n_${def.brand}_`);
+              } else {
+                lineInfo.push(`**${code}**: ${def.description}`);
+              }
+            }
+          });
         }
         
-        return null;
+        // 좌표값과 파라미터 추가
+        const parameters = Object.entries(coordMatches)
+          .filter(([_, match]) => match !== null)
+          .map(([axis, match]) => {
+            if (axis === 'H') {
+              return `**H${match![1]}**: 공구장 보정번호`;
+            } else if (axis === 'D') {
+              return `**D${match![1]}**: 공구경 보정번호`;
+            } else if (axis === 'F') {
+              return `**F${match![1]}**: 이송속도`;
+            } else if (axis === 'S') {
+              return `**S${match![1]}**: 주축회전수`;
+            } else if (axis === 'P') {
+              return `**P${match![1]}**: 파라미터 번호`;
+            } else {
+              return `**${axis}${match![1]}**: ${axis}축 위치`;
+            }
+          });
+        
+        if (parameters.length > 0) {
+          lineInfo.push('### 좌표 및 파라미터');
+          lineInfo.push(parameters.join('\n'));
+        }
+
+        // 현재 라인 전체 표시
+        lineInfo.push('### 전체 블록');
+        lineInfo.push(`\`\`\`gcode\n${lineContent.trim()}\n\`\`\``);
+
+        return {
+          range: hoverRange,
+          contents: [
+            { value: lineInfo.join('\n\n') }
+          ]
+        };
       }
     });
   };
 
+  // 컴포넌트 마운트/언마운트 시 디버깅 로그
+  useEffect(() => {
+    console.log('[CodeEditor] 컴포넌트 마운트됨');
+    
+    // 전역 키보드 단축키 이벤트 리스너 등록
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 에디터가 포커스를 가지고 있지 않을 때도 단축키 처리
+      if (editorRef.current && !cursorStateRef.current.hasFocus) {
+        // Ctrl+Z: 실행 취소
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
+          console.log('[전역 키보드 단축키] Ctrl+Z (실행 취소)');
+          e.preventDefault();
+          handleUndo();
+        }
+        
+        // Ctrl+Shift+Z 또는 Ctrl+Y: 다시 실행
+        if ((e.ctrlKey || e.metaKey) && ((e.shiftKey && e.key === 'z') || (!e.shiftKey && e.key === 'y'))) {
+          console.log('[전역 키보드 단축키] Ctrl+Shift+Z 또는 Ctrl+Y (다시 실행)');
+          e.preventDefault();
+          handleRedo();
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      console.log('[CodeEditor] 컴포넌트 언마운트됨');
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleUndo, handleRedo]);
+  
+  // value prop 변경 시 디버깅 로그
+  useEffect(() => {
+    console.log('[CodeEditor] value prop 변경됨:', value?.length, '자');
+  }, [value]);
+  
+  // 컴포넌트 렌더링 후 포커스 유지를 위한 효과
+  useEffect(() => {
+    // 컴포넌트가 렌더링될 때마다 에디터 포커스 확인
+    if (editorRef.current) {
+      const hasFocus = document.activeElement === editorRef.current.getDomNode();
+      console.log('[렌더링 후] 에디터 포커스 상태:', hasFocus);
+      
+      if (!hasFocus) {
+        console.log('[렌더링 후] 에디터 포커스 복구 시도');
+        setTimeout(() => {
+          if (editorRef.current) {
+            editorRef.current.focus();
+          }
+        }, 10);
+      }
+    }
+  });
+
   return (
     <div className="editor-container">
       <Editor
+        key="monaco-editor-instance"
         height="100%"
         defaultLanguage="gcode"
         value={value}
-        onChange={onChange}
+        onChange={handleEditorChange}
         onMount={handleEditorDidMount}
         theme="gcode-theme-dark"
         options={{
