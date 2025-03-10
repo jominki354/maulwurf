@@ -32,6 +32,8 @@ const TabItem: React.FC<TabItemProps> = ({
   // 이벤트 전파 방지
   const handleCloseClick = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
+    e.preventDefault();
+    console.log('[탭] 닫기 버튼 클릭:', tab.id);
     onClose(e);
   };
   
@@ -81,7 +83,7 @@ const TabItem: React.FC<TabItemProps> = ({
 
   return (
     <div
-      className={`tab ${isActive ? 'active' : ''} ${isDragged ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''}`}
+      className={`tab ${isActive ? 'active' : ''} ${isDragged ? 'dragging' : ''} ${isDragOver ? 'drag-over' : ''} ${tab.isModified ? 'modified' : ''}`}
       onClick={onActivate}
       draggable
       onDragStart={handleDragStart}
@@ -91,9 +93,22 @@ const TabItem: React.FC<TabItemProps> = ({
     >
       <div className="tab-title" ref={titleRef}>
         {tab.fileName || tab.title}
-        {tab.isModified && <span className="modified-indicator">*</span>}
+        {tab.isModified && (
+          <span className="modified-indicator" title="수정됨 - 저장되지 않음">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+              <circle cx="12" cy="12" r="4" fill="currentColor" />
+            </svg>
+          </span>
+        )}
       </div>
-      <div className="tab-close" onClick={handleCloseClick}>×</div>
+      <div 
+        className="tab-close" 
+        onClick={handleCloseClick} 
+        title="탭 닫기"
+        role="button"
+        aria-label="탭 닫기"
+      >×</div>
     </div>
   );
 };

@@ -44,10 +44,11 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
   // 행동 유형 가져오기
   const getActionType = () => {
     const type = (snapshot as any).type;
-    if (type === SnapshotType.MANUAL) return '수동 스냅샷';
-    if (type === SnapshotType.AUTO) return '자동 스냅샷';
-    if (type === SnapshotType.SAVE) return '저장 스냅샷';
-    if (type === SnapshotType.RESTORE) return '복원 스냅샷';
+    if (type === SnapshotType.MANUAL) return '수동 저장';
+    if (type === SnapshotType.AUTO) return '자동 저장';
+    if (type === SnapshotType.SAVE) return '파일 저장';
+    if (type === SnapshotType.RESTORE) return '복원 지점';
+    if (type === SnapshotType.OPEN) return '파일 열기';
     return '스냅샷';
   };
 
@@ -87,6 +88,17 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
     return result;
   };
 
+  // 이벤트 전파 방지
+  const handleDeleteClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    onDelete(e);
+  };
+
+  const handleExportClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    onExport(e);
+  };
+
   const timestamp = snapshot.timestamp instanceof Date 
     ? snapshot.timestamp 
     : new Date(snapshot.timestamp);
@@ -96,10 +108,32 @@ const TimelineItem: React.FC<TimelineItemProps> = ({
 
   return (
     <li 
-      className={`timeline-item ${isActive ? 'active' : ''}`}
+      className={`history-item ${isActive ? 'active' : ''}`}
       onClick={onRestore}
     >
-      <span className="timeline-sequence">{sequenceNumber}.</span> {formatTime(timestamp)} - {getActionType()} - {snapshot.description} <span dangerouslySetInnerHTML={{ __html: getChangeInfo() }} />
+      <div className="history-item-content">
+        <div className="history-item-row">
+          <span className="history-item-time">{formatTime(timestamp)}</span>
+          <span className="history-item-type">{getActionType()}</span>
+        </div>
+        <div className="history-item-text">
+          {snapshot.description}
+          <span dangerouslySetInnerHTML={{ __html: getChangeInfo() }} />
+        </div>
+        <div className="history-item-actions">
+          <div className="history-item-action export" onClick={handleExportClick} title="내보내기">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 4L12 16M12 16L8 12M12 16L16 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M4 20H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <div className="history-item-action delete" onClick={handleDeleteClick} title="삭제">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 7L18 19M18 7L6 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </div>
+        </div>
+      </div>
     </li>
   );
 };

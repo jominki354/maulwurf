@@ -50,34 +50,70 @@ export const useTabs = () => {
 
   // 탭 내용 업데이트
   const updateTabContent = useCallback((tabId: string, content: string) => {
-    // 탭 내용 업데이트
-    setTabs(prevTabs => 
-      prevTabs.map(tab => 
-        tab.id === tabId 
-          ? { ...tab, content, isModified: tab.path ? true : false } 
-          : tab
-      )
-    );
+    console.log('[useTabs] 탭 내용 업데이트 시작:', { tabId, contentLength: content.length });
     
-    // 활성 탭의 내용이 업데이트된 경우 activeTabContent도 업데이트
+    setTabs(prevTabs => {
+      // 업데이트할 탭 찾기
+      const tabIndex = prevTabs.findIndex(tab => tab.id === tabId);
+      
+      // 탭이 없으면 변경 없음
+      if (tabIndex === -1) {
+        console.log('[useTabs] 업데이트할 탭을 찾을 수 없음:', tabId);
+        return prevTabs;
+      }
+      
+      // 현재 탭 가져오기
+      const currentTab = prevTabs[tabIndex];
+      
+      // 내용이 같으면 변경 없음
+      if (currentTab.content === content) {
+        console.log('[useTabs] 내용이 동일하여 업데이트 불필요');
+        return prevTabs;
+      }
+      
+      // 새 탭 배열 생성
+      const newTabs = [...prevTabs];
+      
+      // 탭 내용 업데이트 및 수정 상태 설정
+      newTabs[tabIndex] = {
+        ...currentTab,
+        content,
+        isModified: true
+      };
+      
+      console.log('[useTabs] 탭 내용 업데이트 완료:', { 
+        tabId, 
+        isActiveTab: tabId === activeTabId,
+        oldContentLength: currentTab.content.length,
+        newContentLength: content.length
+      });
+      
+      return newTabs;
+    });
+    
+    // 활성 탭 내용 업데이트 (활성 탭인 경우에만)
     if (tabId === activeTabId) {
+      console.log('[useTabs] 활성 탭 내용 업데이트:', { tabId, contentLength: content.length });
       setActiveTabContent(content);
     }
   }, [activeTabId]);
 
   // 탭 닫기
-  const closeTab = useCallback((tabId: string, event: React.MouseEvent) => {
-    event.stopPropagation();
+  const closeTab = useCallback((tabId: string, event?: React.MouseEvent) => {
+    // 이벤트가 있는 경우에만 전파 중지
+    if (event) {
+      event.stopPropagation();
+    }
+    
+    console.log('[useTabs] 탭 닫기 시도:', tabId);
     
     // 현재 탭 목록 가져오기
     const currentTabs = [...tabs];
     
     // 닫으려는 탭이 없으면 아무 작업도 하지 않음
     const tabIndex = currentTabs.findIndex(tab => tab.id === tabId);
-    if (tabIndex === -1) return;
-    
-    // 탭이 하나만 있고, 그 탭이 새 파일이 아니면 닫지 않음
-    if (currentTabs.length === 1 && !(tabId === 'new-file' && currentTabs[0].path === null)) {
+    if (tabIndex === -1) {
+      console.log('[useTabs] 닫으려는 탭을 찾을 수 없음:', tabId);
       return;
     }
     
@@ -85,26 +121,28 @@ export const useTabs = () => {
     if (tabId === activeTabId) {
       // 닫으려는 탭이 마지막 탭이 아닌 경우, 다음 탭으로 전환
       if (tabIndex < currentTabs.length - 1) {
+        console.log('[useTabs] 다음 탭으로 전환:', currentTabs[tabIndex + 1].id);
         setActiveTabId(currentTabs[tabIndex + 1].id);
         setActiveTabContent(currentTabs[tabIndex + 1].content);
       } 
       // 닫으려는 탭이 마지막 탭인 경우, 이전 탭으로 전환
       else if (tabIndex > 0) {
+        console.log('[useTabs] 이전 탭으로 전환:', currentTabs[tabIndex - 1].id);
         setActiveTabId(currentTabs[tabIndex - 1].id);
         setActiveTabContent(currentTabs[tabIndex - 1].content);
       }
       // 닫으려는 탭이 유일한 탭인 경우, 빈 상태로 설정
       else {
-        // 새 탭 생성
-        const newTab = createNewTab();
-        setTabs([newTab]);
-        setActiveTabId(newTab.id);
-        setActiveTabContent(newTab.content);
+        console.log('[useTabs] 마지막 탭 닫기');
+        setTabs([]);
+        setActiveTabId(null);
+        setActiveTabContent('');
         return;
       }
     }
     
     // 탭 제거
+    console.log('[useTabs] 탭 제거:', tabId);
     setTabs(currentTabs.filter(tab => tab.id !== tabId));
   }, [tabs, activeTabId]);
 

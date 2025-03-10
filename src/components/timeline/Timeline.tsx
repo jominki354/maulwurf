@@ -25,11 +25,11 @@ const Timeline: React.FC<TimelineProps> = ({
   });
 
   return (
-    <div className="timeline-content">
+    <div className="history-content">
       {sortedSnapshots.length === 0 ? (
-        <div className="timeline-empty">스냅샷이 없습니다.</div>
+        <div className="history-empty">스냅샷이 없습니다.</div>
       ) : (
-        <ul className="timeline-list">
+        <ul className="history-list">
           {sortedSnapshots.map((snapshot, index) => {
             // 원래 인덱스 찾기
             const originalIndex = snapshots.findIndex(s => s.id === snapshot.id);
