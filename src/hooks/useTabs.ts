@@ -99,7 +99,7 @@ export const useTabs = () => {
   }, [activeTabId]);
 
   // 탭 닫기
-  const closeTab = useCallback((tabId: string, event?: React.MouseEvent) => {
+  const closeTab = useCallback(async (tabId: string, event?: React.MouseEvent) => {
     // 이벤트가 있는 경우에만 전파 중지
     if (event) {
       event.stopPropagation();
@@ -116,35 +116,69 @@ export const useTabs = () => {
       console.log('[useTabs] 닫으려는 탭을 찾을 수 없음:', tabId);
       return;
     }
-    
-    // 닫으려는 탭이 활성 탭인 경우, 다른 탭으로 전환
-    if (tabId === activeTabId) {
-      // 닫으려는 탭이 마지막 탭이 아닌 경우, 다음 탭으로 전환
-      if (tabIndex < currentTabs.length - 1) {
-        console.log('[useTabs] 다음 탭으로 전환:', currentTabs[tabIndex + 1].id);
-        setActiveTabId(currentTabs[tabIndex + 1].id);
-        setActiveTabContent(currentTabs[tabIndex + 1].content);
-      } 
-      // 닫으려는 탭이 마지막 탭인 경우, 이전 탭으로 전환
-      else if (tabIndex > 0) {
-        console.log('[useTabs] 이전 탭으로 전환:', currentTabs[tabIndex - 1].id);
-        setActiveTabId(currentTabs[tabIndex - 1].id);
-        setActiveTabContent(currentTabs[tabIndex - 1].content);
-      }
-      // 닫으려는 탭이 유일한 탭인 경우, 빈 상태로 설정
-      else {
-        console.log('[useTabs] 마지막 탭 닫기');
-        setTabs([]);
-        setActiveTabId(null);
-        setActiveTabContent('');
-        return;
+
+    // 닫으려는 탭이 수정되었는지 확인
+    const tabToClose = currentTabs[tabIndex];
+    if (tabToClose.isModified) {
+      const fileName = tabToClose.title || '새 파일';
+      const shouldSave = window.confirm(`"${fileName}" 파일에 저장되지 않은 변경사항이 있습니다.\n저장하시겠습니까?`);
+      
+      if (shouldSave) {
+        // 저장 이벤트 발생 및 저장 완료 이벤트 리스너 등록
+        const saveEvent = new CustomEvent('editor-command', {
+          detail: { command: 'save', tabId: tabId }
+        });
+        
+        // 저장 완료 이벤트를 기다린 후 탭 닫기
+        const handleSaveComplete = (event: CustomEvent) => {
+          if (event.detail?.tabId === tabId) {
+            window.removeEventListener('save-complete', handleSaveComplete as EventListener);
+            
+            // 저장 완료 후 탭 닫기 로직 실행
+            closeTabAfterSave();
+          }
+        };
+        
+        window.addEventListener('save-complete', handleSaveComplete as EventListener);
+        window.dispatchEvent(saveEvent);
+        return; // 저장 후 handleSaveComplete에서 탭 닫기 처리
       }
     }
     
-    // 탭 제거
-    console.log('[useTabs] 탭 제거:', tabId);
-    setTabs(currentTabs.filter(tab => tab.id !== tabId));
-  }, [tabs, activeTabId]);
+    // 탭 닫기 로직 (저장하지 않거나 수정되지 않은 경우)
+    closeTabAfterSave();
+    
+    // 탭 닫기 내부 함수
+    function closeTabAfterSave() {
+      // 닫으려는 탭이 활성 탭인 경우, 다른 탭으로 전환
+      if (tabId === activeTabId) {
+        // 닫으려는 탭이 마지막 탭이 아닌 경우, 다음 탭으로 전환
+        if (tabIndex < currentTabs.length - 1) {
+          console.log('[useTabs] 다음 탭으로 전환:', currentTabs[tabIndex + 1].id);
+          setActiveTabId(currentTabs[tabIndex + 1].id);
+          setActiveTabContent(currentTabs[tabIndex + 1].content);
+        } 
+        // 닫으려는 탭이 마지막 탭인 경우, 이전 탭으로 전환
+        else if (tabIndex > 0) {
+          console.log('[useTabs] 이전 탭으로 전환:', currentTabs[tabIndex - 1].id);
+          setActiveTabId(currentTabs[tabIndex - 1].id);
+          setActiveTabContent(currentTabs[tabIndex - 1].content);
+        }
+        // 닫으려는 탭이 유일한 탭인 경우, 빈 상태로 설정
+        else {
+          console.log('[useTabs] 마지막 탭 닫기');
+          setTabs([]);
+          setActiveTabId(null);
+          setActiveTabContent('');
+          return;
+        }
+      }
+      
+      // 탭 제거
+      console.log('[useTabs] 탭 제거:', tabId);
+      setTabs(currentTabs.filter(tab => tab.id !== tabId));
+    }
+  }, [tabs, activeTabId, activeTabContent]);
 
   // 새 탭 생성
   const createTab = useCallback(() => {
