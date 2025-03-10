@@ -4,7 +4,6 @@ import { open, save } from '@tauri-apps/api/dialog';
 import { getFileFilters, extractFileName, showOpenFolderDialog } from '../utils/fileUtils';
 import { dirname } from '@tauri-apps/api/path';
 import { listen } from '@tauri-apps/api/event';
-import { watch } from 'tauri-plugin-fs-watch-api';
 
 export const useFileSystem = () => {
   const [folderPath, setFolderPath] = useState<string>('');
@@ -15,6 +14,39 @@ export const useFileSystem = () => {
   const [fileWatcher, setFileWatcher] = useState<(() => void) | null>(null);
   const [isFileOperationInProgress, setIsFileOperationInProgress] = useState<boolean>(false);
   const [fileOperationDebounceTimer, setFileOperationDebounceTimer] = useState<NodeJS.Timeout | null>(null);
+  const [defaultFolder, setDefaultFolder] = useState<string | null>(null);
+
+  // 기본 폴더 로드
+  useEffect(() => {
+    const loadDefaultFolder = async () => {
+      try {
+        const savedFolder = localStorage.getItem('defaultFolder');
+        if (savedFolder) {
+          setDefaultFolder(savedFolder);
+          // 기본 폴더가 있으면 자동으로 열기
+          await handleOpenFolder(savedFolder);
+        }
+      } catch (error) {
+        console.error('기본 폴더 로드 오류:', error);
+      }
+    };
+
+    loadDefaultFolder();
+  }, []);
+
+  // 기본 폴더 저장
+  const saveDefaultFolder = useCallback(async (path: string | null) => {
+    try {
+      if (path) {
+        localStorage.setItem('defaultFolder', path);
+      } else {
+        localStorage.removeItem('defaultFolder');
+      }
+      setDefaultFolder(path);
+    } catch (error) {
+      console.error('기본 폴더 저장 오류:', error);
+    }
+  }, []);
 
   // 폴더 구조 가져오기
   const fetchFolderStructure = useCallback(async (path: string = folderPath) => {
@@ -181,35 +213,6 @@ export const useFileSystem = () => {
     return result;
   }, []);
 
-  // 파일 시스템 작업 후 폴더 구조 새로고침을 위한 이벤트 리스너
-  useEffect(() => {
-    // 파일 시스템 작업이 완료되면 폴더 구조 새로고침
-    if (lastOperation && folderPath) {
-      console.log(`파일 시스템 작업 감지: ${lastOperation.type} - ${lastOperation.path}`);
-      
-      // 작업 경로가 현재 폴더 내에 있는지 확인
-      const isInCurrentFolder = lastOperation.path.startsWith(folderPath) || 
-                               (lastOperation.type === 'delete' && lastOperation.path.startsWith(folderPath));
-      
-      if (isInCurrentFolder) {
-        console.log('현재 폴더 내 파일 시스템 변경 감지, 폴더 구조 새로고침');
-        loadFolderStructure();
-      }
-      
-      setLastOperation(null);
-    }
-  }, [lastOperation, folderPath, loadFolderStructure]);
-
-  // 외부 도구에 의한 파일 시스템 변경 감지
-  useEffect(() => {
-    // 이전 파일 감시자 정리
-    return () => {
-      if (fileWatcher) {
-        fileWatcher();
-      }
-    };
-  }, [fileWatcher]);
-
   // 폴더 경로가 변경될 때마다 파일 감시자 설정
   useEffect(() => {
     const setupWatcher = async () => {
@@ -223,22 +226,14 @@ export const useFileSystem = () => {
       try {
         console.log(`폴더 감시 시작: ${folderPath}`);
         
-        // 폴더 변경 감시 설정
-        const stopWatching = await watch(folderPath, (event) => {
-          console.log('파일 시스템 변경 감지:', event);
-          
-          // 파일 작업 중에는 폴더 구조 새로고침 건너뛰기
-          if (isFileOperationInProgress) {
-            console.log('파일 작업 중이므로 폴더 구조 새로고침 건너뜀');
-            return;
-          }
-          
-          // 폴더 구조 새로고침
-          loadFolderStructure();
-        }, { recursive: true });
+        // 임시로 파일 시스템 감시 기능 비활성화
+        // 실제 감시 기능 대신 더미 함수 반환
+        const stopWatching = () => {
+          console.log('파일 시스템 감시 중지');
+        };
         
         setFileWatcher(() => stopWatching);
-        console.log('파일 시스템 감시자 설정 완료');
+        console.log('파일 시스템 감시자 설정 완료 (비활성화됨)');
       } catch (error) {
         console.error('파일 시스템 감시자 설정 오류:', error);
       }
@@ -406,6 +401,8 @@ export const useFileSystem = () => {
     getParentFolderPath,
     copyFileToDestination,
     deleteFile,
-    renameFileOrFolder
+    renameFileOrFolder,
+    defaultFolder,
+    setDefaultFolder: saveDefaultFolder
   };
 }; 

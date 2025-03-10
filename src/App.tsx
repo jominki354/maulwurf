@@ -5,11 +5,13 @@ import './App.css';
 import MainLayout from './components/layout/MainLayout';
 import { useApp } from './hooks/useApp';
 import { LogLevel } from './components/logger';
+import { dialog } from '@tauri-apps/api';
 
 function App() {
-  const { logging } = useApp();
+  const { logging, fileSystem } = useApp();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
   // 앱 초기화
   useEffect(() => {

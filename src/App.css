@@ -173,8 +173,22 @@ body {
   min-width: 220px;
   display: flex;
   flex-direction: column;
-  padding: 6px 0;
+  /* 메뉴 영역을 넓히기 위한 패딩 추가 */
+  padding: 10px 0;
   margin-top: 4px;
+  /* 마우스가 벗어나도 메뉴가 유지되도록 여백 추가 */
+  /* 실제 표시 영역은 원래대로 유지 */
+  /* 추가된 여백을 보이지 않게 처리 */
+}
+
+.menu-dropdown::before {
+  content: '';
+  position: absolute;
+  top: -15px;
+  left: -15px;
+  right: -15px;
+  bottom: -15px;
+  z-index: -1;
 }
 
 .submenu {
@@ -187,8 +201,42 @@ body {
   z-index: 101;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   min-width: 220px;
-  padding: 6px 0;
+  /* 서브메뉴 영역을 넓히기 위한 패딩 추가 */
+  padding: 10px 0;
   display: none;
+  /* 마우스가 벗어나도 메뉴가 유지되도록 여백 추가 */
+  /* 실제 표시 영역은 원래대로 유지 */
+  /* 추가된 여백을 보이지 않게 처리 */
+}
+
+.submenu::before {
+  content: '';
+  position: absolute;
+  top: -15px;
+  left: -15px;
+  right: -15px;
+  bottom: -15px;
+  z-index: -1;
+}
+
+/* 설정 메뉴의 에디터와 글꼴 서브메뉴에 대한 특별 처리 */
+.editor-settings-submenu::before, 
+.font-settings-submenu::before {
+  content: '';
+  position: absolute;
+  top: -20px;
+  left: -25px;
+  right: -25px;
+  bottom: -20px;
+  z-index: -1;
+}
+
+.editor-settings-submenu, .font-settings-submenu {
+  width: 250px;
+  /* 서브메뉴 영역을 더 넓게 설정 */
+  padding: 15px 0;
+  /* 마우스가 벗어나도 메뉴가 유지되도록 여백 추가 */
+  margin: -5px 0;
 }
 
 .menu-option {
@@ -203,6 +251,12 @@ body {
   color: var(--text-color);
   font-size: 14px;
   position: relative;
+  /* 메뉴 항목 간격 조정 */
+  margin: 2px 0;
+  /* 메뉴 옵션 패딩 증가 */
+  padding: 12px 16px;
+  /* 메뉴 옵션 높이 증가 */
+  min-height: 24px;
 }
 
 .menu-option:hover {
@@ -210,12 +264,64 @@ body {
   color: white;
 }
 
-.menu-option:hover .submenu {
-  display: block;
+/* 설정 메뉴의 서브메뉴 위치 조정 */
+.menu-option:has(+ .submenu.editor-settings-submenu),
+.menu-option:has(+ .submenu.font-settings-submenu) {
+  position: relative;
 }
 
-.editor-settings-submenu, .font-settings-submenu {
-  width: 250px;
+.menu-option:has(+ .submenu.editor-settings-submenu)::after,
+.menu-option:has(+ .submenu.font-settings-submenu)::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  z-index: 1;
+}
+
+/* 설정 메뉴의 서브메뉴 위치 조정 - :has 선택자 대신 직접 선택 */
+.menu-option {
+  position: relative;
+}
+
+/* 설정 메뉴의 서브메뉴에 대한 추가 스타일 */
+.submenu.editor-settings-submenu,
+.submenu.font-settings-submenu {
+  left: calc(100% - 5px);
+  /* 서브메뉴가 표시될 때 약간의 애니메이션 효과 추가 */
+  animation: submenu-fade-in 0.15s ease-in-out;
+  /* 서브메뉴 영역을 더 넓게 설정 */
+  padding: 15px 0;
+  /* 마우스가 벗어나도 메뉴가 유지되도록 여백 추가 */
+  margin: -5px 0;
+  /* 서브메뉴 너비 증가 */
+  width: 280px;
+  /* 서브메뉴 그림자 강화 */
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* 설정 메뉴의 서브메뉴 내부 요소 스타일 개선 */
+.submenu.editor-settings-submenu .checkbox-option,
+.submenu.font-settings-submenu .dropdown-section {
+  /* 내부 요소 패딩 증가 */
+  padding: 10px 18px;
+  /* 내부 요소 마진 증가 */
+  margin: 5px 0;
+}
+
+/* 설정 메뉴의 서브메뉴 내부 레이블 스타일 개선 */
+.submenu.editor-settings-submenu label,
+.submenu.font-settings-submenu .dropdown-label {
+  /* 레이블 폰트 크기 증가 */
+  font-size: 14px;
+  /* 레이블 색상 개선 */
+  color: var(--text-color);
+}
+
+.menu-option:hover .submenu {
+  display: block;
 }
 
 .menu-separator {
@@ -240,6 +346,11 @@ body {
   align-items: center;
   padding: 8px 12px;
   cursor: pointer;
+  /* 체크박스 옵션 간격 조정 */
+  margin: 4px 0;
+  /* 체크박스 영역 확장 */
+  position: relative;
+  z-index: 103;
 }
 
 .checkbox-option input[type="checkbox"] {
@@ -248,13 +359,20 @@ body {
 
 .dropdown-section {
   padding: 8px 12px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+  /* 드롭다운 섹션 영역 확장 */
+  position: relative;
+  z-index: 102;
+  /* 드롭다운 섹션 패딩 증가 */
+  padding: 12px 16px;
 }
 
 .dropdown-label {
   margin-bottom: 6px;
   font-size: 13px;
   color: var(--text-secondary);
+  /* 레이블 여백 추가 */
+  padding: 2px 0;
 }
 
 .dropdown-section select {
@@ -266,6 +384,13 @@ body {
   border-radius: 4px;
   font-size: 14px;
   outline: none;
+  /* 선택 영역 확장 */
+  position: relative;
+  z-index: 103;
+  /* 선택 영역 패딩 증가 */
+  padding: 8px 10px;
+  /* 선택 영역 높이 증가 */
+  height: 36px;
 }
 
 /* 메인 콘텐츠 */
@@ -563,11 +688,11 @@ body {
 
 /* 히스토리 패널 */
 .history-panel {
-  height: 100%;
   display: flex;
   flex-direction: column;
-  background-color: var(--bg-color);
-  overflow: hidden;
+  height: 100%;
+  background-color: var(--bg-dark);
+  border-right: 1px solid var(--border-color);
 }
 
 .history-header {
@@ -588,38 +713,31 @@ body {
 
 .clear-history {
   background-color: transparent;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  padding: 4px 8px;
-  font-size: 12px;
+  border: none;
+  color: var(--text-secondary);
   cursor: pointer;
-  color: var(--text-color);
-  transition: background-color 0.2s;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  transition: all 0.2s;
 }
 
 .clear-history:hover {
-  background-color: var(--bg-lighter);
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 .history-content {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
-  position: relative;
+  padding: 0;
 }
 
 .history-empty {
-  padding: 16px;
+  padding: 20px;
   text-align: center;
   color: var(--text-secondary);
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 100%;
-  font-size: 15px;
-  font-family: var(--font-family-ui);
-  letter-spacing: 0.5px;
+  font-style: italic;
+  font-size: 13px;
 }
 
 .history-list {
@@ -629,10 +747,77 @@ body {
 }
 
 .history-item {
-  padding: 8px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border-color);
   font-size: 13px;
   color: var(--text-color);
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.2s;
+}
+
+.history-item:hover {
+  background-color: var(--bg-lighter);
+}
+
+.history-item.active {
+  background-color: rgba(0, 120, 215, 0.1);
+  border-left: 3px solid var(--primary-color);
+}
+
+.history-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-item-time {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.history-item-text {
+  word-break: break-word;
+}
+
+.history-item-actions {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.history-item:hover .history-item-actions {
+  opacity: 1;
+}
+
+.history-item-action {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background-color: var(--bg-darker);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.history-item-action:hover {
+  background-color: var(--bg-lighter);
+}
+
+.history-item-action.delete:hover {
+  background-color: rgba(241, 112, 123, 0.2);
+  color: var(--error-color);
+}
+
+.history-item-action.export:hover {
+  background-color: rgba(108, 203, 95, 0.2);
+  color: var(--success-color);
 }
 
 /* 리사이저 */
@@ -762,28 +947,13 @@ body {
 }
 
 .timeline-item {
-  padding: 8px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border-color);
   font-size: 13px;
   color: var(--text-color);
   cursor: pointer;
+  position: relative;
   transition: background-color 0.2s;
-}
-
-.timeline-sequence {
-  font-weight: bold;
-  margin-right: 4px;
-  color: var(--text-secondary);
-}
-
-.added-lines, .added-chars {
-  color: #4caf50;
-  font-weight: bold;
-}
-
-.removed-lines, .removed-chars {
-  color: #f44336;
-  font-weight: bold;
 }
 
 .timeline-item:hover {
@@ -791,8 +961,83 @@ body {
 }
 
 .timeline-item.active {
-  background-color: rgba(0, 120, 215, 0.2);
-  border-left: 2px solid var(--primary-color);
+  background-color: rgba(0, 120, 215, 0.1);
+  border-left: 3px solid var(--primary-color);
+}
+
+.timeline-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.timeline-item-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.timeline-sequence {
+  font-weight: bold;
+  color: var(--primary-color);
+  margin-right: 4px;
+}
+
+.timeline-item-time {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.timeline-item-type {
+  font-size: 12px;
+  background-color: var(--bg-darker);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.timeline-item-description {
+  margin-left: 20px;
+  word-break: break-word;
+}
+
+.timeline-item-actions {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.timeline-item:hover .timeline-item-actions {
+  opacity: 1;
+}
+
+.timeline-item-action {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background-color: var(--bg-darker);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.timeline-item-action:hover {
+  background-color: var(--bg-lighter);
+}
+
+.timeline-item-action.delete:hover {
+  background-color: rgba(241, 112, 123, 0.2);
+  color: var(--error-color);
+}
+
+.timeline-item-action.export:hover {
+  background-color: rgba(108, 203, 95, 0.2);
+  color: var(--success-color);
 }
 
 .timeline-filters {
@@ -1205,15 +1450,168 @@ body {
   height: 100%;
 }
 
-.split-panel-left {
+.split-panel-left, .split-panel-right {
   width: 50%;
   height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-dark);
+}
+
+.split-panel-left {
   border-right: 1px solid var(--border-color);
 }
 
-.split-panel-right {
-  width: 50%;
+/* 히스토리 패널과 타임라인 패널 공통 스타일 */
+.history-panel, .timeline-panel {
+  display: flex;
+  flex-direction: column;
   height: 100%;
+  background-color: var(--bg-dark);
+  overflow: hidden;
+}
+
+.history-header, .timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-darker);
+}
+
+.history-header h3, .timeline-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.clear-history, .timeline-action-button {
+  background-color: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.clear-history:hover, .timeline-action-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-color);
+}
+
+.timeline-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.history-content, .timeline-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.history-empty, .timeline-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+  font-size: 13px;
+}
+
+.history-list, .timeline-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.history-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 13px;
+  color: var(--text-color);
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.2s;
+}
+
+.history-item:hover {
+  background-color: var(--bg-lighter);
+}
+
+.history-item.active {
+  background-color: rgba(0, 120, 215, 0.1);
+  border-left: 3px solid var(--primary-color);
+}
+
+.history-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-item-time {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.history-item-text {
+  word-break: break-word;
+}
+
+.history-item-actions {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.history-item:hover .history-item-actions {
+  opacity: 1;
+}
+
+.history-item-action {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background-color: var(--bg-darker);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.history-item-action:hover {
+  background-color: var(--bg-lighter);
+}
+
+.history-item-action.delete:hover {
+  background-color: rgba(241, 112, 123, 0.2);
+  color: var(--error-color);
+}
+
+.history-item-action.export:hover {
+  background-color: rgba(108, 203, 95, 0.2);
+  color: var(--success-color);
+}
+
+/* 추가 및 삭제된 라인/문자 표시 */
+.added-lines, .added-chars {
+  color: #4caf50;
+  font-weight: bold;
+}
+
+.removed-lines, .removed-chars {
+  color: #f44336;
+  font-weight: bold;
 }
 
 /* 정보 버튼 */
@@ -1407,42 +1805,72 @@ body {
   text-overflow: ellipsis;
   font-size: 13px;
   margin-right: 4px;
+  display: flex;
+  align-items: center;
 }
 
 .modified-indicator {
   color: var(--primary-color);
-  margin-left: 4px;
+  margin-left: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  animation: pulse 2s infinite;
+}
+
+.tab.modified .tab-title {
+  font-weight: 500;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.6;
+  }
 }
 
 .tab-close {
-  width: 18px;
-  height: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 3px;
+  width: 20px;
+  height: 20px;
   margin-left: 8px;
-  font-size: 14px;
-  line-height: 1;
-  color: #999999;
-  opacity: 0.8;
-  transition: all 0.2s ease;
-  position: relative;
-  cursor: pointer;
-  background: none;
   border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0.7;
+  border-radius: 4px;
   padding: 0;
+  font-size: 16px;
+  transition: all 0.2s ease;
 }
 
 .tab-close:hover {
-  background-color: rgba(255, 255, 255, 0.15);
-  color: #FFFFFF;
   opacity: 1;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-color);
 }
 
-/* X 버튼 내용 제거 - 컴포넌트에서 직접 X를 표시함 */
+.tab-close:active {
+  background-color: rgba(255, 255, 255, 0.2);
+  transform: scale(0.95);
+}
+
+/* content 속성 제거 */
 .tab-close::before {
-  content: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-weight: bold;
 }
 
 /* 탭 이동 버튼 스타일 */
@@ -2139,3 +2567,153 @@ body {
 .folder-item.selected .folder-icon::before {
   filter: brightness(1.2);
 }
+
+.added-lines, .added-chars {
+  color: #4caf50;
+  font-weight: bold;
+}
+
+.removed-lines, .removed-chars {
+  color: #f44336;
+  font-weight: bold;
+}
+
+/* 히스토리 항목 스타일 */
+.history-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.history-item-time {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.history-item-type {
+  font-size: 12px;
+  background-color: var(--bg-darker);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.history-item-text {
+  word-break: break-word;
+  padding-left: 4px;
+}
+
+.history-item-actions {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  margin-left: auto;
+}
+
+@keyframes submenu-fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 기본 폴더 설정 스타일 */
+.default-folder-section {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  position: relative;
+  z-index: 102;
+}
+
+.default-folder-label {
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-color);
+}
+
+.default-folder-path {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-height: 36px;
+}
+
+.default-folder-path:hover {
+  border-color: var(--primary-color);
+  background-color: var(--bg-lighter);
+}
+
+.default-folder-path-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-color);
+  margin-right: 8px;
+}
+
+.browse-folder-icon {
+  font-size: 16px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.default-folder-path:hover .browse-folder-icon {
+  opacity: 1;
+}
+
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0.7;
+  border-radius: 4px;
+  padding: 0;
+  font-size: 16px;
+  transition: all 0.2s ease;
+}
+
+.tab-close:hover {
+  opacity: 1;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-color);
+}
+
+.tab-close:active {
+  background-color: rgba(255, 255, 255, 0.2);
+  transform: scale(0.95);
+}
+
+/* content 속성 제거 */
+.tab-close::before {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-weight: bold;
+}
+  
