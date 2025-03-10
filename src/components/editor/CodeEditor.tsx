@@ -2,6 +2,7 @@ import React, { useRef, useCallback, useEffect } from 'react';
 import Editor, { Monaco } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';
 import { findGCodeDefinition, parseGCodeLine } from '../../utils/gcodeDefinitions';
+import { editor as monacoEditor } from 'monaco-editor';
 
 interface CodeEditorProps {
   value: string;
@@ -573,6 +574,30 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
         };
       }
     });
+
+    // editor-command 이벤트 리스너 추가
+    const handleEditorCommand = (e: CustomEvent) => {
+      const { command } = e.detail;
+      if (command === 'find') {
+        const findController = editor.getContribution('editor.contrib.findController');
+        if (findController) {
+          findController.start({
+            forceRevealReplace: false,
+            seedSearchStringFromSelection: 'single',
+            shouldFocus: true,
+            shouldAnimate: true
+          });
+        }
+      }
+    };
+
+    window.addEventListener('editor-command', handleEditorCommand as EventListener);
+
+    // 컴포넌트 언마운트 시 이벤트 리스너 제거
+    return () => {
+      console.log('[CodeEditor] 컴포넌트 언마운트됨');
+      window.removeEventListener('editor-command', handleEditorCommand as EventListener);
+    };
   };
 
   // 컴포넌트 마운트/언마운트 시 디버깅 로그

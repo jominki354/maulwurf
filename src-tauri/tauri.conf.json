@@ -17,6 +17,17 @@
         "all": false,
         "open": true
       },
+      "window": {
+        "all": true,
+        "close": true,
+        "hide": true,
+        "show": true,
+        "maximize": true,
+        "minimize": true,
+        "unmaximize": true,
+        "unminimize": true,
+        "startDragging": true
+      },
       "dialog": {
         "all": true,
         "open": true,
