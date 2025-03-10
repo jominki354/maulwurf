@@ -10,7 +10,8 @@ export enum SnapshotType {
   AUTO = 'auto',       // 자동 생성된 스냅샷
   MANUAL = 'manual',   // 수동으로 생성된 스냅샷
   SAVE = 'save',       // 저장 시 생성된 스냅샷
-  RESTORE = 'restore'  // 복원 시 생성된 스냅샷
+  RESTORE = 'restore', // 복원 시 생성된 스냅샷
+  OPEN = 'open'        // 파일 열기 시 생성된 스냅샷
 }
 
 // 확장된 스냅샷 인터페이스
@@ -104,7 +105,7 @@ export const useTimeline = () => {
     // 현재 시간
     const now = Date.now();
     
-    // 자동 스냅샷인 경우 최소 간격 확인 (3초)
+    // 자동 스냅샷인 경우 최소 간격 확인 (3분 = 180초)
     if (type === SnapshotType.AUTO) {
       const lastAutoSnapshot = previousSnapshots.find(s => (s as any).type === SnapshotType.AUTO);
       if (lastAutoSnapshot) {
@@ -112,7 +113,7 @@ export const useTimeline = () => {
           ? lastAutoSnapshot.timestamp.getTime() 
           : new Date(lastAutoSnapshot.timestamp).getTime();
         
-        if (now - lastTime < 3000) {
+        if (now - lastTime < 180000) {
           return null;
         }
       }
