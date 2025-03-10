@@ -23,6 +23,8 @@ const MainLayout: React.FC = () => {
   const [findReplaceVisible, setFindReplaceVisible] = useState<boolean>(false);
   const [debugConsoleVisible, setDebugConsoleVisible] = useState<boolean>(false);
   const infoButtonRef = useRef<HTMLDivElement>(null);
+  // 메뉴 닫기 타이머 참조 추가
+  const menuCloseTimerRef = useRef<number | null>(null);
 
   // 상태 추가
   const [activeBottomTab, setActiveBottomTab] = useState<string>('timeline');
@@ -30,6 +32,9 @@ const MainLayout: React.FC = () => {
   const [debugConsoleSearch, setDebugConsoleSearch] = useState<string>('');
   const [debugConsoleFilter, setDebugConsoleFilter] = useState<string>('all');
   const [debugConsoleAutoScroll, setDebugConsoleAutoScroll] = useState<boolean>(true);
+  const [bottomPanelVisible, setBottomPanelVisible] = useState<boolean>(true);
+  const [folderPanelWidth, setFolderPanelWidth] = useState<number>(200);
+  const [bottomPanelHeight, setBottomPanelHeight] = useState<number>(300);
 
   // 클립보드 상태 관리
   const [clipboard, setClipboard] = useState<{
@@ -57,32 +62,19 @@ const MainLayout: React.FC = () => {
   // 파일 선택 핸들러 (파일을 열음)
   const handleFileSelect = async (filePath: string) => {
     try {
-      // 이미 열린 파일인지 확인
+      // 파일 내용 읽기
+      const content = await fileSystem.openFile(filePath);
+      const fileName = filePath.split(/[/\\]/).pop() || '새 파일';
+
+      // 이미 열려있는 탭인지 확인
       const existingTab = tabs.tabs.find(tab => tab.path === filePath);
-      
       if (existingTab) {
-        // 이미 열린 파일이면 해당 탭을 활성화만 함
+        // 이미 열려있는 탭이면 해당 탭을 활성화만 하고 스냅샷은 생성하지 않음
         tabs.activateTab(existingTab.id);
         return;
       }
-      
-      // 파일 내용 읽기
-      const content = await fileSystem.openFile(filePath);
-      
-      // 파일 이름 추출
-      const fileName = filePath.split(/[/\\]/).pop() || '새 파일';
-      
-      // 상태 업데이트
-      editor.setFileName(fileName);
-      editor.setFilePath(filePath);
-      
-      // 선택된 파일 경로 업데이트
-      fileSystem.setSelectedFilePath(filePath);
-      
-      // 히스토리에 추가
-      logging.addToHistory(`파일 열기: ${filePath}`);
-      
-      // 탭 추가 (addTab 함수 내에서 탭 활성화 및 내용 설정이 이루어짐)
+
+      // 새 탭 추가
       const newTab = tabs.addTab({
         id: filePath,
         title: fileName,
@@ -90,23 +82,19 @@ const MainLayout: React.FC = () => {
         content: content
       });
       
-      // 파일 열기 스냅샷 생성
-      // 해당 파일에 대한 스냅샷이 없는 경우에만 첫 스냅샷 생성
-      const existingSnapshots = timeline.snapshots.filter(snapshot => snapshot.tabId === filePath);
-      if (existingSnapshots.length === 0) {
-        timeline.createSnapshot(
-          "파일 열기",
-          content,
-          fileName,
-          filePath,
-          filePath, // 탭 ID는 filePath
-          editor.cursorPosition || undefined,
-          timeline.SnapshotType.MANUAL, // 수동 스냅샷으로 표시
-          ["파일 열기", "초기 상태"],
-          editor.scrollPosition || undefined
-        );
-      }
-      
+      // 처음 열 때만 스냅샷 생성
+      timeline.createSnapshot(
+        "파일 열기",
+        content,
+        fileName,
+        filePath,
+        filePath, // 탭 ID는 filePath
+        editor.cursorPosition || undefined,
+        timeline.SnapshotType.OPEN, // 파일 열기 스냅샷으로 표시
+        ["파일 열기", "초기 상태"],
+        editor.scrollPosition || undefined
+      );
+
       // 최초 파일 열기 시에만 새 파일 탭 닫기
       if (isFirstFileOpen) {
         // 새 탭이 추가된 후에 탭 목록을 다시 확인
@@ -146,6 +134,23 @@ const MainLayout: React.FC = () => {
     if (activeMenu !== null) {
       setActiveMenu(menuName);
     }
+    
+    // 마우스가 메뉴 영역으로 들어오면 타이머 취소
+    if (menuCloseTimerRef.current !== null) {
+      window.clearTimeout(menuCloseTimerRef.current);
+      menuCloseTimerRef.current = null;
+    }
+  };
+
+  // 메뉴 마우스 아웃 핸들러 추가
+  const handleMenuMouseOut = () => {
+    // 마우스가 메뉴 영역을 벗어나면 지연 시간 후 메뉴 닫기
+    if (activeMenu !== null && menuCloseTimerRef.current === null) {
+      menuCloseTimerRef.current = window.setTimeout(() => {
+        setActiveMenu(null);
+        menuCloseTimerRef.current = null;
+      }, 1500); // 1500ms 지연 시간 설정
+    }
   };
 
   // 정보 툴팁 토글
@@ -158,12 +163,20 @@ const MainLayout: React.FC = () => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       
-      // 메뉴 아이템, 메뉴 드롭다운, 서브메뉴를 클릭한 경우에는 메뉴를 닫지 않음
+      // 메뉴 아이템, 메뉴 드롭다운, 서브메뉴, 드롭다운 섹션, 셀렉트 요소를 클릭한 경우에는 메뉴를 닫지 않음
       if (!target.closest('.menu-item') && 
           !target.closest('.menu-dropdown') && 
           !target.closest('.submenu') &&
-          !target.closest('.dropdown-section')) {
+          !target.closest('.dropdown-section') &&
+          !target.closest('select') &&
+          target.tagName !== 'OPTION') {
         setActiveMenu(null);
+        
+        // 클릭 시 타이머 취소
+        if (menuCloseTimerRef.current !== null) {
+          window.clearTimeout(menuCloseTimerRef.current);
+          menuCloseTimerRef.current = null;
+        }
       }
       
       if (infoButtonRef.current && !infoButtonRef.current.contains(target) && !target.closest('.info-tooltip')) {
@@ -174,6 +187,11 @@ const MainLayout: React.FC = () => {
     document.addEventListener('click', handleClickOutside);
     return () => {
       document.removeEventListener('click', handleClickOutside);
+      
+      // 컴포넌트 언마운트 시 타이머 정리
+      if (menuCloseTimerRef.current !== null) {
+        window.clearTimeout(menuCloseTimerRef.current);
+      }
     };
   }, []);
 
@@ -201,7 +219,7 @@ const MainLayout: React.FC = () => {
         const newHeight = window.innerHeight - e.clientY;
         
         if (newHeight >= minHeight && newHeight <= maxHeight) {
-          layout.setBottomPanelHeight(newHeight);
+        layout.setBottomPanelHeight(newHeight);
         }
       }
     };
@@ -268,15 +286,15 @@ const MainLayout: React.FC = () => {
       const activeTab = tabs.tabs.find(tab => tab.id === tabs.activeTabId);
       if (!activeTab) return;
       
-      // 파일 경로가 없거나 새 파일인 경우에만 다른 이름으로 저장 다이얼로그 표시
-      if (!editor.filePath || editor.filePath === '') {
+      // 파일 경로가 없는 경우에만 다른 이름으로 저장 다이얼로그 표시
+      if (!activeTab.path) {
         // 파일 경로가 없으면 다른 이름으로 저장
         await handleSaveAsFile();
         return;
       }
       
       // 파일 저장
-      await fileSystem.saveFile(editor.filePath, tabs.activeTabContent);
+      await fileSystem.saveFile(activeTab.path, tabs.activeTabContent);
       
       // 탭 상태 업데이트 (수정되지 않음으로 표시)
       if (tabs.activeTabId) {
@@ -285,10 +303,10 @@ const MainLayout: React.FC = () => {
       
       // 저장 스냅샷 생성
       timeline.createSnapshot(
-        `파일 저장: ${activeTab.fileName || '새 파일'}`,
+        `파일 저장: ${activeTab.title || '새 파일'}`,
         tabs.activeTabContent,
-        activeTab.fileName || '새 파일',
-        editor.filePath,
+        activeTab.title || '새 파일',
+        activeTab.path,
         tabs.activeTabId || '',
         editor.cursorPosition || undefined,
         timeline.SnapshotType.SAVE,
@@ -298,7 +316,7 @@ const MainLayout: React.FC = () => {
       );
       
       // 히스토리에 추가
-      logging.addToHistory(`파일 저장: ${editor.filePath}`);
+      logging.addToHistory(`파일 저장: ${activeTab.path}`);
       
       // 토스트 메시지 표시
       toast.showToast('파일이 저장되었습니다.', 'success');
@@ -428,7 +446,27 @@ const MainLayout: React.FC = () => {
 
   // 디버그 콘솔 토글
   const toggleDebugConsole = () => {
-    setDebugConsoleVisible(prev => !prev);
+    console.log('[디버그 콘솔] 토글 요청됨, 현재 상태:', !debugConsoleVisible);
+    
+    // 디버그 콘솔 상태 토글
+    setDebugConsoleVisible(prev => {
+      const newState = !prev;
+      console.log('[디버그 콘솔] 상태 변경:', prev, '->', newState);
+      
+      // 디버그 콘솔 토글 이벤트 발생
+      const customEvent = new CustomEvent('debug-console-toggled', {
+        detail: {
+          visible: newState
+        }
+      });
+      window.dispatchEvent(customEvent);
+      console.log('[디버그 콘솔] 토글 이벤트 발생');
+      
+      return newState;
+    });
+    
+    // 디버그 콘솔 로그 추가
+    logging.addLog('디버그 콘솔 토글', 'command');
   };
 
   // 폴더 패널 리사이저 드래그 시작
@@ -447,7 +485,14 @@ const MainLayout: React.FC = () => {
   // 하단 패널 리사이저 드래그 시작
   const handleBottomPanelResizerMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     layout.setIsDraggingBottomPanel(true);
+    
+    // 드래그 중에는 커서 스타일 변경
+    document.body.style.cursor = 'row-resize';
+    
+    // 선택 방지
+    document.body.style.userSelect = 'none';
   };
 
   // 부모 폴더로 이동
@@ -547,145 +592,34 @@ const MainLayout: React.FC = () => {
       // 전체 스냅샷 배열에서의 인덱스 찾기
       const originalIndex = timeline.snapshots.findIndex(s => s.id === snapshot.id);
       
-      // 삭제 전 확인 (자동 스냅샷이 아닌 경우)
-      if (snapshot.type !== timeline.SnapshotType.AUTO) {
-        const confirmDelete = window.confirm(`"${snapshot.description}" 스냅샷을 삭제하시겠습니까?`);
-        if (!confirmDelete) {
-          return;
-        }
-      }
-      
+      // 확인 없이 바로 삭제
+      console.log('[스냅샷] 삭제:', snapshot.description);
       timeline.deleteSnapshot(originalIndex);
       logging.addToHistory(`스냅샷 삭제: ${snapshot.description}`);
+      
+      // 삭제 성공 토스트 메시지
+      toast.showToast(`"${snapshot.description}" 스냅샷이 삭제되었습니다.`, 'success');
     }
   };
 
-  // 스냅샷 내보내기
-  const handleExportSnapshot = async (index: number, event: React.MouseEvent) => {
-    event.stopPropagation();
-    
-    // 현재 활성 탭의 스냅샷만 필터링
-    const filteredSnapshots = timeline.snapshots.filter(snapshot => snapshot.tabId === tabs.activeTabId);
-    const snapshot = filteredSnapshots[index];
-    
-    if (snapshot) {
-      try {
-        // 파일 저장 다이얼로그 열기
-        const filePath = await fileSystem.showSaveDialog();
-        
-        if (!filePath) {
-          // 사용자가 취소함
-          return;
-        }
-        
-        // 파일 저장
-        await fileSystem.saveFile(filePath, snapshot.content);
-        
-        // 히스토리에 추가
-        logging.addToHistory(`스냅샷 내보내기: ${snapshot.description} -> ${filePath}`);
-        
-        // 토스트 메시지 표시
-        toast.showToast(`스냅샷이 ${filePath}에 저장되었습니다.`, 'success');
-      } catch (error) {
-        console.error('스냅샷 내보내기 오류:', error);
-        toast.showToast(`스냅샷을 내보낼 수 없습니다: ${error}`, 'error');
-      }
-    }
-  };
-  
-  // 스냅샷 가져오기
-  const handleImportSnapshot = async () => {
-    try {
-      const snapshot = await timeline.importSnapshot();
-      
-      if (snapshot) {
-        // 히스토리에 추가
-        logging.addToHistory(`스냅샷 가져오기: ${snapshot.fileName}`);
-        
-        // 토스트 메시지 표시
-        toast.showToast(`${snapshot.fileName} 스냅샷을 가져왔습니다.`, 'success');
-        
-        // 가져온 스냅샷 복원
-        const index = timeline.snapshots.findIndex(s => s.id === snapshot.id);
-        if (index !== -1) {
-          handleRestoreSnapshot(index);
-        }
-      }
-    } catch (error) {
-      console.error('스냅샷 가져오기 오류:', error);
-      toast.showToast(`스냅샷을 가져올 수 없습니다: ${error}`, 'error');
-    }
-  };
-  
-  // 스냅샷 비교
-  const handleCompareSnapshots = (index1: number, index2: number) => {
-    const diff = timeline.compareSnapshots(index1, index2);
-    
-    if (diff) {
-      // 비교 결과 표시 (실제 구현에서는 모달 또는 별도 패널에 표시)
-      console.log('스냅샷 비교 결과:', diff);
-      
-      // 히스토리에 추가
-      logging.addToHistory('스냅샷 비교 완료');
-    }
-  };
-  
-  // 수동 스냅샷 생성
-  const handleCreateManualSnapshot = () => {
-    // 현재 활성 탭 찾기
-    const activeTab = tabs.tabs.find(tab => tab.id === tabs.activeTabId);
-    if (!activeTab) return;
-    
-    const snapshot = timeline.createSnapshot(
-      `${activeTab.title || '새 파일'} 수동 스냅샷`,
-      tabs.activeTabContent,
-      activeTab.title || '새 파일',
-      activeTab.path || '',
-      tabs.activeTabId || '',
-      editor.cursorPosition || undefined,
-      timeline.SnapshotType.MANUAL,
-      [],
-      editor.scrollPosition || undefined,
-      editor.getSelectionsFromEditor()
-    );
-    
-    if (snapshot) {
-      // 히스토리에 추가
-      logging.addToHistory(`수동 스냅샷 생성: ${activeTab.title || '새 파일'}`);
-      
-      // 토스트 메시지 표시
-      toast.showToast('수동 스냅샷이 생성되었습니다.', 'success');
-    }
-  };
-  
-  // 모든 스냅샷 지우기
+  // 모든 스냅샷 삭제
   const handleClearAllSnapshots = () => {
-    // 확인 대화상자 표시
-    if (window.confirm('현재 탭의 모든 스냅샷을 지우시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
-      // 현재 활성 탭의 스냅샷만 지우기
-      if (tabs.activeTabId) {
-        timeline.clearTabSnapshots(tabs.activeTabId);
-      }
-      
-      // 히스토리에 추가
-      logging.addToHistory('현재 탭의 모든 스냅샷 지우기');
-      
-      // 토스트 메시지 표시
-      toast.showToast('현재 탭의 모든 스냅샷이 지워졌습니다.', 'info');
-    }
+    // 확인 없이 바로 삭제
+    console.log('[스냅샷] 모든 스냅샷 삭제');
+    timeline.clearAllSnapshots();
+    
+    // 삭제 성공 토스트 메시지
+    toast.showToast('모든 스냅샷이 삭제되었습니다.', 'success');
   };
   
-  // 자동 스냅샷 정리
+  // 오래된 스냅샷 정리
   const handleCleanupSnapshots = () => {
-    const removedCount = timeline.cleanupSnapshots();
+    // 확인 없이 바로 정리
+    console.log('[스냅샷] 오래된 스냅샷 정리');
+    timeline.cleanupSnapshots();
     
-    if (removedCount > 0) {
-      // 히스토리에 추가
-      logging.addToHistory(`자동 스냅샷 정리: ${removedCount}개 제거됨`);
-      
-      // 토스트 메시지 표시
-      toast.showToast(`${removedCount}개의 오래된 자동 스냅샷이 제거되었습니다.`, 'info');
-    }
+    // 정리 성공 토스트 메시지
+    toast.showToast('오래된 스냅샷이 정리되었습니다.', 'success');
   };
 
   // 하단 패널 탭 전환
@@ -698,37 +632,138 @@ const MainLayout: React.FC = () => {
     handleNewFile();
   };
 
+  // 주기적인 자동 저장 스냅샷 생성 (5분마다)
+  useEffect(() => {
+    const autoSaveInterval = 5 * 60 * 1000; // 5분
+    
+    const createAutoSaveSnapshot = () => {
+      // 현재 활성 탭 찾기
+      const activeTab = tabs.tabs.find(tab => tab.id === tabs.activeTabId);
+      if (!activeTab) return;
+      
+      // 수정된 내용이 있는 경우에만 스냅샷 생성
+      if (activeTab.isModified) {
+        timeline.createSnapshot(
+          `${activeTab.title || '새 파일'} 자동 저장`,
+          tabs.activeTabContent,
+          activeTab.title || '새 파일',
+          activeTab.path || '',
+          tabs.activeTabId || '',
+          editor.cursorPosition || undefined,
+          timeline.SnapshotType.AUTO,
+          ['자동 저장', '주기적'],
+          editor.scrollPosition || undefined,
+          editor.getSelectionsFromEditor()
+        );
+        
+        console.log('자동 저장 스냅샷이 생성되었습니다.');
+      }
+    };
+    
+    const intervalId = setInterval(createAutoSaveSnapshot, autoSaveInterval);
+    
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [tabs, timeline, editor]);
+
+  // 의도치 않은 종료 시 스냅샷 생성
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+    // 현재 활성 탭 찾기
+    const activeTab = tabs.tabs.find(tab => tab.id === tabs.activeTabId);
+    if (!activeTab) return;
+    
+      // 수정된 내용이 있는 경우에만 스냅샷 생성
+      if (activeTab.isModified) {
+        timeline.createSnapshot(
+          `${activeTab.title || '새 파일'} 자동 저장`,
+      tabs.activeTabContent,
+      activeTab.title || '새 파일',
+      activeTab.path || '',
+          tabs.activeTabId || '',
+      editor.cursorPosition || undefined,
+          timeline.SnapshotType.AUTO,
+          ['자동 저장', '종료 전'],
+      editor.scrollPosition || undefined,
+      editor.getSelectionsFromEditor()
+    );
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [tabs, timeline, editor]);
+  
   // 에디터 내용 변경 이벤트 처리
   useEffect(() => {
     const handleContentChanged = (event: CustomEvent) => {
-      const { tabId, content, fileName, filePath } = event.detail;
+      const { tabId, content, fileName, filePath, cursorPosition } = event.detail;
       
-      console.log('Content changed event received:', { tabId, fileName, filePath });
-      
-      // 타임라인 스냅샷 생성
-      const snapshot = timeline.createSnapshot(
-        `${fileName} 편집`,
-        content,
+      console.log('[이벤트 수신] content-changed 이벤트 수신:', { 
+        tabId, 
         fileName,
         filePath,
-        tabId,
-        editor.cursorPosition || undefined
-      );
+        contentLength: content?.length || 0,
+        cursorPosition,
+        activeTabId: tabs.activeTabId,
+        editorState: {
+          cursorPosition: editor.cursorPosition,
+          hasFocus: document.activeElement?.className?.includes('monaco') || false
+        }
+      });
       
-      console.log('Timeline snapshot created:', snapshot);
+      // 타이핑할 때마다 스냅샷을 생성하지 않음
+      // 스냅샷은 저장, 열기, 의도치 않은 종료 시에만 생성됨
       
-      // 히스토리에 추가
-      logging.addToHistory(`${fileName} 편집 스냅샷 생성`);
+      // 탭 내용 업데이트
+      if (tabId && content) {
+        console.log('[탭 업데이트] 탭 내용 업데이트 시작:', tabId);
+        
+        // 업데이트 전 상태 기록
+        const beforeUpdate = {
+          activeTabId: tabs.activeTabId,
+          activeTabContent: tabs.activeTabContent?.length || 0,
+          cursorPosition: editor.cursorPosition
+        };
+        
+        // 탭 내용 업데이트
+        tabs.updateTabContent(tabId, content);
+        
+        // 커서 위치 유지 (이벤트에서 전달된 커서 위치가 있는 경우)
+        if (cursorPosition && editor.setCursorPositionInEditor) {
+          console.log('[커서 위치] 커서 위치 복원 시도:', cursorPosition);
+          setTimeout(() => {
+            editor.setCursorPositionInEditor(cursorPosition);
+          }, 0);
+        }
+        
+        // 업데이트 후 상태 기록
+        setTimeout(() => {
+          console.log('[탭 업데이트] 탭 내용 업데이트 완료:', {
+            beforeUpdate,
+            afterUpdate: {
+              activeTabId: tabs.activeTabId,
+              activeTabContent: tabs.activeTabContent?.length || 0,
+              cursorPosition: editor.cursorPosition
+            }
+          });
+        }, 0);
+      }
     };
     
     // 이벤트 리스너 등록
+    console.log('[이벤트 등록] content-changed 이벤트 리스너 등록');
     window.addEventListener('content-changed', handleContentChanged as EventListener);
     
-    // 컴포넌트 언마운트 시 이벤트 리스너 제거
     return () => {
+      console.log('[이벤트 제거] content-changed 이벤트 리스너 제거');
       window.removeEventListener('content-changed', handleContentChanged as EventListener);
     };
-  }, [timeline, editor.cursorPosition, logging]);
+  }, [tabs, timeline, editor]);
 
   // 에디터 커맨드 이벤트 처리
   useEffect(() => {
@@ -736,6 +771,9 @@ const MainLayout: React.FC = () => {
       const { command } = event.detail;
       
       console.log('Editor command received:', command);
+      
+      // 디버그 콘솔에 커맨드 로그 추가
+      logging.addLog(`커맨드 실행: ${command}`, 'command');
       
       // 명령어에 따라 적절한 핸들러 호출
       switch (command) {
@@ -751,6 +789,9 @@ const MainLayout: React.FC = () => {
         case 'find':
           toggleFindReplace();
           break;
+        case 'debug':
+          toggleDebugConsole();
+          break;
       }
     };
     
@@ -761,27 +802,121 @@ const MainLayout: React.FC = () => {
     return () => {
       window.removeEventListener('editor-command', handleEditorCommand as EventListener);
     };
-  }, [handleSaveFile, handleOpenFile, handleNewFile, toggleFindReplace]);
+  }, [handleSaveFile, handleOpenFile, handleNewFile, toggleFindReplace, toggleDebugConsole, logging]);
+
+  // 수동 스냅샷 생성
+  const handleCreateManualSnapshot = () => {
+    // 현재 활성 탭 찾기
+    const activeTab = tabs.tabs.find(tab => tab.id === tabs.activeTabId);
+    if (!activeTab) {
+      console.log('[스냅샷] 활성 탭이 없어 수동 스냅샷을 생성할 수 없음');
+      return;
+    }
+    
+    console.log('[스냅샷] 수동 스냅샷 생성 시도:', activeTab.title || '새 파일');
+    
+    const snapshot = timeline.createSnapshot(
+      `${activeTab.title || '새 파일'} 수동 스냅샷`,
+      tabs.activeTabContent,
+      activeTab.title || '새 파일',
+      activeTab.path || '',
+      tabs.activeTabId || '',
+      editor.cursorPosition || undefined,
+      timeline.SnapshotType.MANUAL,
+      [],
+      editor.scrollPosition || undefined,
+      editor.getSelectionsFromEditor?.() || []
+    );
+    
+    if (snapshot) {
+      // 히스토리에 추가
+      logging.addToHistory(`수동 스냅샷 생성: ${activeTab.title || '새 파일'}`);
+      
+      // 토스트 메시지 표시
+      toast.showToast('수동 스냅샷이 생성되었습니다.', 'success');
+      
+      console.log('[스냅샷] 수동 스냅샷 생성 완료:', snapshot.id);
+    } else {
+      console.log('[스냅샷] 수동 스냅샷 생성 실패');
+    }
+  };
+  
+  // 스냅샷 내보내기
+  const handleExportSnapshot = async (index: number, event: React.MouseEvent) => {
+    event.stopPropagation();
+    
+    // 현재 활성 탭의 스냅샷만 필터링
+    const filteredSnapshots = timeline.snapshots.filter(snapshot => snapshot.tabId === tabs.activeTabId);
+    const snapshot = filteredSnapshots[index];
+    
+    if (snapshot) {
+      try {
+        console.log('[스냅샷] 내보내기 시도:', snapshot.description);
+        
+        // 파일 저장 다이얼로그 열기
+        const filePath = await fileSystem.showSaveDialog();
+        
+        if (!filePath) {
+          // 사용자가 취소함
+          console.log('[스냅샷] 내보내기 취소됨');
+          return;
+        }
+        
+        // 파일 저장
+        await fileSystem.saveFile(filePath, snapshot.content);
+        
+        // 히스토리에 추가
+        logging.addToHistory(`스냅샷 내보내기: ${snapshot.description} -> ${filePath}`);
+        
+        // 토스트 메시지 표시
+        toast.showToast(`스냅샷이 ${filePath}에 저장되었습니다.`, 'success');
+        
+        console.log('[스냅샷] 내보내기 완료:', filePath);
+      } catch (error) {
+        console.error('[스냅샷] 내보내기 오류:', error);
+        toast.showToast(`스냅샷을 내보낼 수 없습니다: ${error}`, 'error');
+      }
+    }
+  };
 
   // 키보드 단축키 이벤트 처리
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl 키가 눌려있는지 확인
-      const isCtrl = e.ctrlKey || e.metaKey;
-      
-      // 입력 필드에서 단축키가 작동하지 않도록 예외 처리
+      // 입력 요소에 포커스가 있는 경우 단축키 무시
       if (
-        e.target instanceof HTMLInputElement || 
-        e.target instanceof HTMLTextAreaElement || 
-        (e.target as HTMLElement).isContentEditable
+        document.activeElement instanceof HTMLInputElement ||
+        document.activeElement instanceof HTMLTextAreaElement ||
+        (document.activeElement && (document.activeElement as HTMLElement).isContentEditable)
       ) {
-        // 저장(Ctrl+S)은 입력 필드에서도 작동하도록 허용
-        if (isCtrl && e.key === 's') {
-          e.preventDefault();
-          handleSaveFile();
+        return;
+      }
+      
+      // Ctrl+` 또는 F12: 디버그 콘솔 토글
+      if ((e.ctrlKey && e.key === '`') || e.key === 'F12') {
+        console.log('[키보드 단축키] 디버그 콘솔 토글 단축키 감지:', e.key);
+        e.preventDefault();
+        toggleDebugConsole();
+        return;
+      }
+      
+      // Ctrl+W: 현재 탭 닫기
+      if (e.ctrlKey && e.key === 'w') {
+        console.log('[키보드 단축키] 탭 닫기 단축키 감지: Ctrl+W');
+        e.preventDefault();
+        
+        // 현재 활성 탭이 있으면 닫기
+        if (tabs.activeTabId) {
+          console.log('[탭 닫기] 활성 탭 닫기 시도:', tabs.activeTabId);
+          // 이벤트 객체 없이 직접 closeTab 호출
+          tabs.closeTab(tabs.activeTabId);
+        } else {
+          console.log('[탭 닫기] 활성 탭 없음');
         }
         return;
       }
+      
+      // Ctrl 키가 눌려있는지 확인
+      const isCtrl = e.ctrlKey || e.metaKey;
       
       // 단축키 처리
       if (isCtrl) {
@@ -837,12 +972,6 @@ const MainLayout: React.FC = () => {
       
       // 기타 단축키
       switch (e.key) {
-        case '`': // 디버그 콘솔 토글 (Ctrl+`)
-          if (isCtrl) {
-            e.preventDefault();
-            toggleDebugConsole();
-          }
-          break;
         case 'F5': // 수동 스냅샷 생성 (F5)
           e.preventDefault();
           handleCreateManualSnapshot();
@@ -850,12 +979,10 @@ const MainLayout: React.FC = () => {
       }
     };
     
-    // 키보드 이벤트 리스너 등록
-    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown);
     
-    // 컴포넌트 언마운트 시 이벤트 리스너 제거
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [
     editor, 
@@ -867,7 +994,9 @@ const MainLayout: React.FC = () => {
     toggleFindReplace, 
     toggleDebugConsole, 
     handleFolderSelect,
-    handleCreateManualSnapshot
+    handleCreateManualSnapshot,
+    handleExportSnapshot,
+    tabs
   ]);
 
   // 토스트 메시지 이벤트 리스너
@@ -883,10 +1012,10 @@ const MainLayout: React.FC = () => {
         'active-toast'
       );
     };
-
+    
     // 이벤트 리스너 등록
     window.addEventListener('showToast', handleShowToast as EventListener);
-
+    
     // 컴포넌트 언마운트 시 이벤트 리스너 제거
     return () => {
       window.removeEventListener('showToast', handleShowToast as EventListener);
@@ -1079,13 +1208,14 @@ const MainLayout: React.FC = () => {
 
   return (
     <div className="app-container dark">
-      {/* 메뉴바 */}
-      <div className="menu-bar">
+      {/* 상단 메뉴바 */}
+      <div className="menu-bar" style={{ zIndex: 1000 }}>
         <div className="menu-left">
           <div 
             className="menu-item" 
             onClick={() => toggleMenu('file')}
             onMouseOver={() => handleMenuMouseOver('file')}
+            onMouseOut={handleMenuMouseOut}
           >
             파일
             {activeMenu === 'file' && (
@@ -1098,10 +1228,6 @@ const MainLayout: React.FC = () => {
                   <span>파일 열기</span>
                   <span className="shortcut-hint">Ctrl+O</span>
                 </div>
-                <div className="menu-option" onClick={() => handleFolderSelect('')}>
-                  <span>폴더 열기</span>
-                  <span className="shortcut-hint">Ctrl+K</span>
-                </div>
                 <div className="menu-separator"></div>
                 <div className="menu-option" onClick={handleSaveFile}>
                   <span>저장</span>
@@ -1111,6 +1237,16 @@ const MainLayout: React.FC = () => {
                   <span>다른 이름으로 저장</span>
                   <span className="shortcut-hint">Ctrl+Shift+S</span>
                 </div>
+                <div className="menu-separator"></div>
+                <div className="menu-option" onClick={async () => {
+                  const selectedPath = await fileSystem.showOpenFolderDialog();
+                  if (selectedPath) {
+                    await fileSystem.setDefaultFolder(selectedPath);
+                    toast.showToast('기본 폴더가 설정되었습니다.', 'success');
+                  }
+                }}>
+                  <span>기본 폴더 지정</span>
+                </div>
               </div>
             )}
           </div>
@@ -1119,10 +1255,15 @@ const MainLayout: React.FC = () => {
             className="menu-item" 
             onClick={() => toggleMenu('edit')}
             onMouseOver={() => handleMenuMouseOver('edit')}
+            onMouseLeave={handleMenuMouseOut}
           >
             편집
             {activeMenu === 'edit' && (
-              <div className="menu-dropdown">
+              <div 
+                className="menu-dropdown"
+                onMouseEnter={() => handleMenuMouseOver('edit')}
+                onMouseLeave={handleMenuMouseOut}
+              >
                 <div className="menu-option" onClick={() => editor.undo()}>
                   <span>실행 취소</span>
                   <span className="shortcut-hint">Ctrl+Z</span>
@@ -1144,179 +1285,177 @@ const MainLayout: React.FC = () => {
             className="menu-item" 
             onClick={() => toggleMenu('view')}
             onMouseOver={() => handleMenuMouseOver('view')}
+            onMouseOut={handleMenuMouseOut}
           >
             보기
             {activeMenu === 'view' && (
               <div className="menu-dropdown">
-                <div className="menu-option" onClick={() => layout.toggleFolderPanel()}>
-                  <span>파일 탐색기</span>
-                  <span className="shortcut-hint">Ctrl+B</span>
+                <div className="checkbox-option">
+                  <input 
+                    type="checkbox" 
+                    checked={layout.showFolderPanel} 
+                    onChange={() => layout.toggleFolderPanel()} 
+                  />
+                  <span>폴더 패널</span>
                 </div>
-                <div className="menu-option" onClick={() => layout.toggleBottomPanel()}>
-                  <span>타임라인/히스토리</span>
-                  <span className="shortcut-hint">Ctrl+J</span>
+                <div className="checkbox-option">
+                  <input 
+                    type="checkbox" 
+                    checked={bottomPanelVisible} 
+                    onChange={() => setBottomPanelVisible(!bottomPanelVisible)} 
+                  />
+                  <span>하단 패널</span>
                 </div>
                 <div className="menu-separator"></div>
                 <div className="menu-option" onClick={toggleDebugConsole}>
                   <span>디버그 콘솔</span>
-                  <span className="shortcut-hint">Ctrl+`</span>
                 </div>
               </div>
             )}
           </div>
           
+          {/* 에디터 메뉴 */}
           <div 
             className="menu-item" 
-            onClick={() => toggleMenu('settings')}
-            onMouseOver={() => handleMenuMouseOver('settings')}
+            onClick={() => toggleMenu('editor')}
+            onMouseOver={() => handleMenuMouseOver('editor')}
+            onMouseOut={handleMenuMouseOut}
           >
-            설정
-            {activeMenu === 'settings' && (
+            에디터
+            {activeMenu === 'editor' && (
+              <div className="menu-dropdown">
+                <div className="checkbox-option">
+                  <input 
+                    type="checkbox" 
+                    id="wordWrap" 
+                    checked={editor.wordWrap === 'on'} 
+                    onChange={() => editor.setWordWrap(editor.wordWrap === 'on' ? 'off' : 'on')} 
+                  />
+                  <label htmlFor="wordWrap">자동 줄바꿈</label>
+                </div>
+                <div className="checkbox-option">
+                  <input 
+                    type="checkbox" 
+                    id="lineNumbers" 
+                    checked={editor.showLineNumbers} 
+                    onChange={() => editor.setShowLineNumbers(!editor.showLineNumbers)} 
+                  />
+                  <label htmlFor="lineNumbers">줄 번호 표시</label>
+                </div>
+                <div className="checkbox-option">
+                  <input 
+                    type="checkbox" 
+                    id="minimap" 
+                    checked={editor.showMinimap} 
+                    onChange={() => editor.setShowMinimap(!editor.showMinimap)} 
+                  />
+                  <label htmlFor="minimap">미니맵 표시</label>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {/* 글꼴 메뉴 */}
+          <div 
+            className="menu-item" 
+            onClick={() => toggleMenu('font')}
+            onMouseOver={() => handleMenuMouseOver('font')}
+            onMouseOut={handleMenuMouseOut}
+          >
+            글꼴
+            {activeMenu === 'font' && (
               <div className="menu-dropdown">
                 <div className="menu-option">
-                  <span>에디터</span>
-                  <span className="shortcut-hint">▶</span>
-                  <div className="submenu editor-settings-submenu" onClick={(e) => e.stopPropagation()}>
-                    <div className="checkbox-option" onClick={(e) => e.stopPropagation()}>
-                      <input 
-                        type="checkbox" 
-                        id="wordWrap" 
-                        checked={editor.wordWrap === 'on'} 
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          editor.setWordWrap(editor.wordWrap === 'on' ? 'off' : 'on');
-                        }} 
-                      />
-                      <label htmlFor="wordWrap" onClick={(e) => e.stopPropagation()}>자동 줄바꿈</label>
+                  <span>글꼴 패밀리</span>
+                  <span className="shortcut-hint">{editor.fontFamily || 'monospace'}</span>
+                  <div className="submenu">
+                    <div className="menu-option" onClick={() => editor.setFontFamily('Consolas')}>
+                      <span>Consolas</span>
                     </div>
-                    <div className="checkbox-option" onClick={(e) => e.stopPropagation()}>
-                      <input 
-                        type="checkbox" 
-                        id="lineNumbers" 
-                        checked={editor.showLineNumbers} 
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          editor.setShowLineNumbers(!editor.showLineNumbers);
-                        }} 
-                      />
-                      <label htmlFor="lineNumbers" onClick={(e) => e.stopPropagation()}>줄 번호 표시</label>
+                    <div className="menu-option" onClick={() => editor.setFontFamily("'맑은 고딕', 'Malgun Gothic'")}>
+                      <span>맑은 고딕</span>
                     </div>
-                    <div className="checkbox-option" onClick={(e) => e.stopPropagation()}>
-                      <input 
-                        type="checkbox" 
-                        id="minimap" 
-                        checked={editor.showMinimap} 
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          editor.setShowMinimap(!editor.showMinimap);
-                        }} 
-                      />
-                      <label htmlFor="minimap" onClick={(e) => e.stopPropagation()}>미니맵 표시</label>
+                    <div className="menu-option" onClick={() => editor.setFontFamily("'나눔고딕코딩', 'NanumGothicCoding'")}>
+                      <span>나눔고딕코딩</span>
+                    </div>
+                    <div className="menu-option" onClick={() => editor.setFontFamily("'D2Coding'")}>
+                      <span>D2Coding</span>
+                    </div>
+                    <div className="menu-option" onClick={() => editor.setFontFamily("'Source Code Pro'")}>
+                      <span>Source Code Pro</span>
+                    </div>
+                    <div className="menu-option" onClick={() => editor.setFontFamily("'Fira Code'")}>
+                      <span>Fira Code</span>
+                    </div>
+                    <div className="menu-option" onClick={() => editor.setFontFamily("'JetBrains Mono'")}>
+                      <span>JetBrains Mono</span>
+                    </div>
+                    <div className="menu-option" onClick={() => editor.setFontFamily('monospace')}>
+                      <span>monospace</span>
                     </div>
                   </div>
                 </div>
                 <div className="menu-option">
-                  <span>글꼴</span>
-                  <span className="shortcut-hint">▶</span>
-                  <div className="submenu font-settings-submenu" onClick={(e) => e.stopPropagation()}>
-                    <div className="dropdown-section" onClick={(e) => e.stopPropagation()}>
-                      <div className="dropdown-label">글꼴 크기</div>
-                      <select 
-                        value={editor.fontSize} 
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          editor.setFontSize(Number(e.target.value));
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {[10, 12, 14, 16, 18, 20, 22, 24].map(size => (
-                          <option key={size} value={size}>{size}px</option>
-                        ))}
-                      </select>
+                  <span>글꼴 크기</span>
+                  <span className="shortcut-hint">{editor.fontSize || 14}px</span>
+                  <div className="submenu">
+                    <div className="menu-option custom-font-size" onClick={(e) => e.stopPropagation()}>
+                      <span className="font-size-label">글꼴 크기</span>
+                      <div className="custom-font-size-control">
+                        <div 
+                          className="custom-font-size-value"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const currentSize = editor.fontSize || 14;
+                            const newSize = window.prompt('글꼴 크기를 입력하세요 (10-30):', currentSize.toString());
+                            
+                            if (newSize) {
+                              const size = parseInt(newSize);
+                              if (!isNaN(size) && size >= 10 && size <= 30) {
+                                editor.setFontSize(size);
+                              }
+                            }
+                          }}
+                        >
+                          <span className="font-size-number">{editor.fontSize || 14}</span>
+                          <span className="font-size-unit">px</span>
+                          <span className="font-size-edit-icon">✎</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="dropdown-section" onClick={(e) => e.stopPropagation()}>
-                      <div className="dropdown-label">글꼴 패밀리</div>
-                      <select 
-                        value={editor.fontFamily} 
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          editor.setFontFamily(e.target.value);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <option value="Consolas">Consolas</option>
-                        <option value="Courier New">Courier New</option>
-                        <option value="Menlo">Menlo</option>
-                        <option value="Monaco">Monaco</option>
-                        <option value="Source Code Pro">Source Code Pro</option>
-                      </select>
+                    <div className="menu-separator"></div>
+                    <div className="menu-option" onClick={() => editor.setFontSize(12)}>
+                      <span>12px</span>
+                    </div>
+                    <div className="menu-option" onClick={() => editor.setFontSize(13)}>
+                      <span>13px</span>
+                    </div>
+                    <div className="menu-option" onClick={() => editor.setFontSize(14)}>
+                      <span>14px</span>
+                    </div>
+                    <div className="menu-option" onClick={() => editor.setFontSize(15)}>
+                      <span>15px</span>
+                    </div>
+                    <div className="menu-option" onClick={() => editor.setFontSize(16)}>
+                      <span>16px</span>
+                    </div>
+                    <div className="menu-option" onClick={() => editor.setFontSize(18)}>
+                      <span>18px</span>
+                    </div>
+                    <div className="menu-option" onClick={() => editor.setFontSize(20)}>
+                      <span>20px</span>
+                    </div>
+                    <div className="menu-option" onClick={() => editor.setFontSize(22)}>
+                      <span>22px</span>
+                    </div>
+                    <div className="menu-option" onClick={() => editor.setFontSize(24)}>
+                      <span>24px</span>
                     </div>
                   </div>
                 </div>
               </div>
             )}
           </div>
-          
-          {activeMenu === 'editor-settings' && (
-            <div className="menu-dropdown" style={{ left: '120px', top: '36px' }}>
-              <div className="checkbox-option">
-                <input 
-                  type="checkbox" 
-                  id="wordWrap" 
-                  checked={editor.wordWrap === 'on'} 
-                  onChange={(e) => editor.setWordWrap(editor.wordWrap === 'on' ? 'off' : 'on')} 
-                />
-                <label htmlFor="wordWrap">자동 줄바꿈</label>
-              </div>
-              <div className="checkbox-option">
-                <input 
-                  type="checkbox" 
-                  id="lineNumbers" 
-                  checked={editor.showLineNumbers} 
-                  onChange={(e) => editor.setShowLineNumbers(!editor.showLineNumbers)} 
-                />
-                <label htmlFor="lineNumbers">줄 번호 표시</label>
-              </div>
-              <div className="checkbox-option">
-                <input 
-                  type="checkbox" 
-                  id="minimap" 
-                  checked={editor.showMinimap} 
-                  onChange={(e) => editor.setShowMinimap(!editor.showMinimap)} 
-                />
-                <label htmlFor="minimap">미니맵 표시</label>
-              </div>
-            </div>
-          )}
-          
-          {activeMenu === 'font-settings' && (
-            <div className="menu-dropdown" style={{ left: '120px', top: '36px' }}>
-              <div className="dropdown-section">
-                <div className="dropdown-label">글꼴 크기</div>
-                <select 
-                  value={editor.fontSize} 
-                  onChange={(e) => editor.setFontSize(Number(e.target.value))}
-                >
-                  {[10, 12, 14, 16, 18, 20, 22, 24].map(size => (
-                    <option key={size} value={size}>{size}px</option>
-                  ))}
-                </select>
-              </div>
-              <div className="dropdown-section">
-                <div className="dropdown-label">글꼴 패밀리</div>
-                <select 
-                  value={editor.fontFamily} 
-                  onChange={(e) => editor.setFontFamily(e.target.value)}
-                >
-                  <option value="Consolas">Consolas</option>
-                  <option value="Courier New">Courier New</option>
-                  <option value="Menlo">Menlo</option>
-                  <option value="Monaco">Monaco</option>
-                  <option value="Source Code Pro">Source Code Pro</option>
-                </select>
-              </div>
-            </div>
-          )}
         </div>
         
         <div className="menu-right">
@@ -1366,7 +1505,7 @@ const MainLayout: React.FC = () => {
               onDelete={handleDeleteFile}
               onPaste={handlePasteFile}
             />
-            <div
+            <div 
               className="resize-handle right-resize-handle"
               onMouseDown={handleFolderPanelResizerMouseDown}
               onClick={(e) => {
@@ -1416,7 +1555,7 @@ const MainLayout: React.FC = () => {
       </div>
       
       {/* 하단 패널 */}
-      {layout.showBottomPanel && (
+      {bottomPanelVisible && (
         <>
           <div 
             className="resizer resizer-horizontal"
@@ -1444,8 +1583,8 @@ const MainLayout: React.FC = () => {
                 </div>
               </div>
               <div className="split-panel-right">
-                <div className="timeline-panel">
-                  <div className="timeline-header">
+                <div className="history-panel">
+                  <div className="history-header">
                     <h3>
                       {tabs.activeTabId ? (
                         `타임라인 - ${tabs.tabs.find(tab => tab.id === tabs.activeTabId)?.title || '새 파일'}`
@@ -1455,14 +1594,14 @@ const MainLayout: React.FC = () => {
                     </h3>
                     <div className="timeline-actions">
                       <button 
-                        className="timeline-action-button" 
+                        className="clear-history" 
                         onClick={handleCreateManualSnapshot}
                         title="수동 스냅샷 생성"
                       >
                         생성
                       </button>
                       <button 
-                        className="timeline-action-button" 
+                        className="clear-history" 
                         onClick={handleClearAllSnapshots}
                         title="모든 스냅샷 지우기"
                       >
@@ -1471,7 +1610,7 @@ const MainLayout: React.FC = () => {
                     </div>
                   </div>
                   {timeline.isLoading ? (
-                    <div className="timeline-loading">스냅샷 로딩 중...</div>
+                    <div className="history-empty">스냅샷 로딩 중...</div>
                   ) : (
                     <Timeline
                       snapshots={timeline.snapshots.filter(snapshot => snapshot.tabId === tabs.activeTabId)}
@@ -1572,7 +1711,7 @@ const MainLayout: React.FC = () => {
                   >
                     {log.message}
                   </span>
-                </div>
+              </div>
               ))
             }
           </div>
