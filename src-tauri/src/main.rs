@@ -471,7 +471,7 @@ fn main() {
     
     // 패닉 핸들러 설정
     panic::set_hook(Box::new(|panic_info| {
-        let message = format!("애플리케이션 패닉: {}", panic_info);
+        let message = format!("애플리케이션 패닉 발생: {:?}", panic_info);
         add_log("fatal", &message);
     }));
     
@@ -506,6 +506,29 @@ fn main() {
     
     // Tauri 앱 실행
     tauri::Builder::default()
+        .setup(|app| {
+            // 앱 핸들 저장
+            *APP_HANDLE.lock().unwrap() = Some(app.handle().clone());
+            
+            // 터미널 로그 채널 설정
+            let (tx, rx): (Sender<String>, Receiver<String>) = channel();
+            
+            // 로그 상태에 송신자 설정
+            if let Ok(mut state) = LOG_STATE.lock() {
+                state.set_terminal_sender(tx);
+            }
+            
+            // 터미널 로그 수신 스레드
+            thread::spawn(move || {
+                while let Ok(message) = rx.recv() {
+                    // 터미널 로그 처리 로직
+                    println!("터미널 로그: {}", message);
+                }
+            });
+            
+            add_log("info", "앱 초기화 완료");
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             is_directory,
@@ -515,20 +538,8 @@ fn main() {
             get_logs,
             get_terminal_logs
         ])
-        .setup(|app| {
-            // 앱 핸들 저장
-            if let Ok(mut handle) = APP_HANDLE.lock() {
-                *handle = Some(app.handle());
-            }
-            
-            // 로그 파일 경로 출력
-            let log_path = get_log_file_path();
-            println!("로그 파일 경로: {:?}", log_path);
-            
-            Ok(())
-        })
         .run(tauri::generate_context!())
-        .expect("Tauri 앱 실행 중 오류 발생");
+        .expect("error while running tauri application");
     
     // 종료 로그
     add_log("info", "애플리케이션 종료");
