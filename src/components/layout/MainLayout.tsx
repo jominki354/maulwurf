@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
+import { appWindow } from '@tauri-apps/api/window';
 import { useApp } from '../../hooks/useApp';
 import CodeEditor from '../editor/CodeEditor';
 import TabBar from '../tabs/TabBar';
 import FileExplorer from '../fileExplorer/FileExplorer';
 import Timeline from '../timeline/Timeline';
+import './MainLayout.css';
+import './FontSizeSlider.css';
 
 const MainLayout: React.FC = () => {
   const { 
@@ -320,6 +323,12 @@ const MainLayout: React.FC = () => {
       
       // 토스트 메시지 표시
       toast.showToast('파일이 저장되었습니다.', 'success');
+      
+      // 저장 완료 이벤트 발생
+      const saveCompleteEvent = new CustomEvent('save-complete', {
+        detail: { tabId: tabs.activeTabId }
+      });
+      window.dispatchEvent(saveCompleteEvent);
     } catch (error) {
       console.error('파일 저장 오류:', error);
       toast.showToast(`파일을 저장할 수 없습니다: ${error}`, 'error');
@@ -391,6 +400,12 @@ const MainLayout: React.FC = () => {
       
       // 토스트 메시지 표시
       toast.showToast('파일이 저장되었습니다.', 'success');
+      
+      // 저장 완료 이벤트 발생
+      const saveCompleteEvent = new CustomEvent('save-complete', {
+        detail: { tabId: filePath } // 새 탭 ID는 filePath
+      });
+      window.dispatchEvent(saveCompleteEvent);
     } catch (error) {
       console.error('파일 저장 오류:', error);
       toast.showToast(`파일을 저장할 수 없습니다: ${error}`, 'error');
@@ -441,7 +456,16 @@ const MainLayout: React.FC = () => {
 
   // 찾기/바꾸기 토글
   const toggleFindReplace = () => {
-    setFindReplaceVisible(prev => !prev);
+    const activeEditor = document.querySelector('.monaco-editor')?.querySelector('.monaco-editor-background')?.parentElement;
+    if (activeEditor) {
+      const event = new CustomEvent('editor-command', { 
+        detail: { 
+          command: 'find',
+          editor: activeEditor
+        } 
+      });
+      window.dispatchEvent(event);
+    }
   };
 
   // 디버그 콘솔 토글
@@ -667,37 +691,83 @@ const MainLayout: React.FC = () => {
     };
   }, [tabs, timeline, editor]);
 
-  // 의도치 않은 종료 시 스냅샷 생성
+  // 앱 종료 이벤트 처리
   useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-    // 현재 활성 탭 찾기
-    const activeTab = tabs.tabs.find(tab => tab.id === tabs.activeTabId);
-    if (!activeTab) return;
-    
-      // 수정된 내용이 있는 경우에만 스냅샷 생성
-      if (activeTab.isModified) {
-        timeline.createSnapshot(
-          `${activeTab.title || '새 파일'} 자동 저장`,
-      tabs.activeTabContent,
-      activeTab.title || '새 파일',
-      activeTab.path || '',
-          tabs.activeTabId || '',
-      editor.cursorPosition || undefined,
-          timeline.SnapshotType.AUTO,
-          ['자동 저장', '종료 전'],
-      editor.scrollPosition || undefined,
-      editor.getSelectionsFromEditor()
-    );
+    let unlistenFn: (() => void) | undefined;
+
+    const setupAppExit = async () => {
+      // 이전 이벤트 리스너 제거
+      if (unlistenFn) {
+        unlistenFn();
+      }
+
+      unlistenFn = await appWindow.onCloseRequested(async (event) => {
+        // 수정된 파일이 있는지 확인
+        const modifiedTabs = tabs.tabs.filter(tab => tab.isModified);
+        
+        if (modifiedTabs.length > 0) {
+          event.preventDefault(); // 앱 종료 방지
+          
+          // 각 수정된 파일에 대해 저장 여부 확인
+          for (const tab of modifiedTabs) {
+            const fileName = tab.title || '새 파일';
+            const shouldSave = window.confirm(`"${fileName}" 파일에 저장되지 않은 변경사항이 있습니다.\n저장하시겠습니까?`);
+            
+            if (shouldSave) {
+              try {
+                if (tab.path) {
+                  // 기존 파일 저장
+                  await fileSystem.saveFile(tab.path, tab.content);
+                  logging.addToHistory(`파일 저장: ${tab.path}`);
+                  tabs.markContentSaved(tab.id);
+                  
+                  // 저장 완료 이벤트 발생
+                  const saveCompleteEvent = new CustomEvent('save-complete', {
+                    detail: { tabId: tab.id }
+                  });
+                  window.dispatchEvent(saveCompleteEvent);
+                } else {
+                  // 새 파일인 경우 다른 이름으로 저장
+                  const filePath = await fileSystem.showSaveDialog();
+                  if (filePath) {
+                    await fileSystem.saveFile(filePath, tab.content);
+                    logging.addToHistory(`파일 저장: ${filePath}`);
+                    tabs.markContentSaved(tab.id);
+                    
+                    // 저장 완료 이벤트 발생
+                    const saveCompleteEvent = new CustomEvent('save-complete', {
+                      detail: { tabId: tab.id }
+                    });
+                    window.dispatchEvent(saveCompleteEvent);
+                  }
+                }
+              } catch (error) {
+                console.error('파일 저장 오류:', error);
+                window.alert(`"${fileName}" 파일 저장 중 오류가 발생했습니다: ${error}`);
+                return; // 저장 실패 시 앱 종료 취소
+              }
+            } else {
+              // 저장하지 않기로 선택한 경우 탭 닫기
+              tabs.closeTab(tab.id);
+            }
+          }
+
+          // 모든 처리가 완료되면 앱 종료
+          appWindow.close();
+        }
+      });
+    };
+
+    setupAppExit();
+
+    // 컴포넌트 언마운트 시 이벤트 리스너 정리
+    return () => {
+      if (unlistenFn) {
+        unlistenFn();
       }
     };
-    
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [tabs, timeline, editor]);
-  
+  }, [tabs, fileSystem, logging]);
+
   // 에디터 내용 변경 이벤트 처리
   useEffect(() => {
     const handleContentChanged = (event: CustomEvent) => {
@@ -1400,26 +1470,36 @@ const MainLayout: React.FC = () => {
                   <span className="shortcut-hint">{editor.fontSize || 14}px</span>
                   <div className="submenu">
                     <div className="menu-option custom-font-size" onClick={(e) => e.stopPropagation()}>
-                      <span className="font-size-label">글꼴 크기</span>
-                      <div className="custom-font-size-control">
-                        <div 
-                          className="custom-font-size-value"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const currentSize = editor.fontSize || 14;
-                            const newSize = window.prompt('글꼴 크기를 입력하세요 (10-30):', currentSize.toString());
-                            
-                            if (newSize) {
-                              const size = parseInt(newSize);
-                              if (!isNaN(size) && size >= 10 && size <= 30) {
-                                editor.setFontSize(size);
-                              }
-                            }
-                          }}
-                        >
-                          <span className="font-size-number">{editor.fontSize || 14}</span>
-                          <span className="font-size-unit">px</span>
-                          <span className="font-size-edit-icon">✎</span>
+                      <div className="font-size-slider-container">
+                        <div className="font-size-slider-wrapper">
+                          <input
+                            type="range"
+                            className="font-size-slider-minimal"
+                            min="10"
+                            max="30"
+                            step="1"
+                            value={editor.fontSize || 14}
+                            onChange={(e) => {
+                              const size = parseInt(e.target.value);
+                              editor.setFontSize(size);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <div className="font-size-box-container">
+                            <div 
+                              className="font-size-box"
+                              style={{ left: `calc(${((editor.fontSize || 14) - 10) * 5}% - 15px)`, top: '-20px' }}
+                            >
+                              {editor.fontSize || 14}
+                            </div>
+                          </div>
+                          <div className="font-size-ticks">
+                            <span>10</span>
+                            <span>15</span>
+                            <span>20</span>
+                            <span>25</span>
+                            <span>30</span>
+                          </div>
                         </div>
                       </div>
                     </div>
