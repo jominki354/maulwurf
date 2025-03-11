@@ -1,1 +1,0 @@
-D:\maulwurf\src-tauri\target\debug\maulwurf.exe: D:\maulwurf\src-tauri\build.rs D:\maulwurf\src-tauri\src\main.rs D:\maulwurf\src-tauri\target\debug\build\maulwurf-2b7efe253643060b\out\icon.ico D:\maulwurf\src-tauri\tauri.conf.json
