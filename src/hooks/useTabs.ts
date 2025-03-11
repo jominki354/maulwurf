@@ -121,32 +121,45 @@ export const useTabs = () => {
     const tabToClose = currentTabs[tabIndex];
     if (tabToClose.isModified) {
       const fileName = tabToClose.title || '새 파일';
-      const shouldSave = window.confirm(`"${fileName}" 파일에 저장되지 않은 변경사항이 있습니다.\n저장하시겠습니까?`);
-      
-      if (shouldSave) {
-        // 저장 이벤트 발생 및 저장 완료 이벤트 리스너 등록
-        const saveEvent = new CustomEvent('editor-command', {
-          detail: { command: 'save', tabId: tabId }
+      // 확인 대화상자를 표시하기 전에 탭이 닫히지 않도록 Promise로 처리
+      try {
+        const shouldSave = await new Promise<boolean>((resolve) => {
+          const result = window.confirm(`"${fileName}" 파일에 저장되지 않은 변경사항이 있습니다.\n저장하시겠습니까?`);
+          resolve(result);
         });
         
-        // 저장 완료 이벤트를 기다린 후 탭 닫기
-        const handleSaveComplete = (event: CustomEvent) => {
-          if (event.detail?.tabId === tabId) {
-            window.removeEventListener('save-complete', handleSaveComplete as EventListener);
-            
-            // 저장 완료 후 탭 닫기 로직 실행
-            closeTabAfterSave();
-          }
-        };
-        
-        window.addEventListener('save-complete', handleSaveComplete as EventListener);
-        window.dispatchEvent(saveEvent);
-        return; // 저장 후 handleSaveComplete에서 탭 닫기 처리
+        if (shouldSave) {
+          // 저장 이벤트 발생 및 저장 완료 이벤트 리스너 등록
+          const saveEvent = new CustomEvent('editor-command', {
+            detail: { command: 'save', tabId: tabId }
+          });
+          
+          // 저장 완료 이벤트를 기다린 후 탭 닫기
+          const handleSaveComplete = (event: CustomEvent) => {
+            if (event.detail?.tabId === tabId) {
+              window.removeEventListener('save-complete', handleSaveComplete as EventListener);
+              
+              // 저장 완료 후 탭 닫기 로직 실행
+              closeTabAfterSave();
+            }
+          };
+          
+          window.addEventListener('save-complete', handleSaveComplete as EventListener);
+          window.dispatchEvent(saveEvent);
+          return; // 저장 후 handleSaveComplete에서 탭 닫기 처리
+        } else {
+          // 취소를 누른 경우 탭을 닫지 않고 함수 종료
+          console.log('[useTabs] 사용자가 저장을 취소하여 탭 닫기 취소:', tabId);
+          return; // 여기서 함수를 종료하여 탭이 닫히지 않도록 함
+        }
+      } catch (error) {
+        console.error('[useTabs] 탭 닫기 확인 중 오류:', error);
+        return; // 오류 발생 시 탭 닫기 취소
       }
+    } else {
+      // 수정되지 않은 탭만 닫기
+      closeTabAfterSave();
     }
-    
-    // 탭 닫기 로직 (저장하지 않거나 수정되지 않은 경우)
-    closeTabAfterSave();
     
     // 탭 닫기 내부 함수
     function closeTabAfterSave() {

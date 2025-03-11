@@ -791,4 +791,67 @@
 
 .custom-font-size-value:hover .font-size-edit-icon {
   opacity: 1;
+}
+
+.menu-right {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.info-button {
+  padding: 0 10px;
+  cursor: pointer;
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.info-tooltip {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background-color: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 15px;
+  min-width: 200px;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.info-tooltip-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.info-tooltip-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.info-tooltip-version {
+  font-size: 14px;
+  color: #888;
+}
+
+.info-tooltip-author {
+  font-size: 14px;
+  color: #888;
+}
+
+.info-tooltip-email {
+  font-size: 14px;
+}
+
+.info-tooltip-email a {
+  color: #888;
+  text-decoration: none;
+}
+
+.info-tooltip-email a:hover {
+  text-decoration: underline;
 } 

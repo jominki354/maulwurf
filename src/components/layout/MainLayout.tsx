@@ -7,7 +7,7 @@ import TabBar from '../tabs/TabBar';
 import FileExplorer from '../fileExplorer/FileExplorer';
 import Timeline from '../timeline/Timeline';
 import './MainLayout.css';
-import './FontSizeSlider.css';
+import './FontSizeSelect.css';
 
 const MainLayout: React.FC = () => {
   const { 
@@ -711,7 +711,11 @@ const MainLayout: React.FC = () => {
           // 각 수정된 파일에 대해 저장 여부 확인
           for (const tab of modifiedTabs) {
             const fileName = tab.title || '새 파일';
-            const shouldSave = window.confirm(`"${fileName}" 파일에 저장되지 않은 변경사항이 있습니다.\n저장하시겠습니까?`);
+            // Promise로 확인 대화상자 처리
+            const shouldSave = await new Promise<boolean>((resolve) => {
+              const result = window.confirm(`"${fileName}" 파일에 저장되지 않은 변경사항이 있습니다.\n저장하시겠습니까?`);
+              resolve(result);
+            });
             
             if (shouldSave) {
               try {
@@ -739,6 +743,10 @@ const MainLayout: React.FC = () => {
                       detail: { tabId: tab.id }
                     });
                     window.dispatchEvent(saveCompleteEvent);
+                  } else {
+                    // 저장 대화상자에서 취소를 누른 경우 앱 종료 취소
+                    console.log('사용자가 저장 대화상자에서 취소를 선택하여 앱 종료 취소');
+                    return;
                   }
                 }
               } catch (error) {
@@ -747,8 +755,9 @@ const MainLayout: React.FC = () => {
                 return; // 저장 실패 시 앱 종료 취소
               }
             } else {
-              // 저장하지 않기로 선택한 경우 탭 닫기
-              tabs.closeTab(tab.id);
+              // 저장하지 않기로 선택한 경우 - 앱 종료 취소
+              console.log(`"${fileName}" 파일의 변경사항을 저장하지 않기로 선택하여 앱 종료 취소`);
+              return; // 앱 종료 취소
             }
           }
 
@@ -1470,38 +1479,31 @@ const MainLayout: React.FC = () => {
                   <span className="shortcut-hint">{editor.fontSize || 14}px</span>
                   <div className="submenu">
                     <div className="menu-option custom-font-size" onClick={(e) => e.stopPropagation()}>
-                      <div className="font-size-slider-container">
-                        <div className="font-size-slider-wrapper">
-                          <input
-                            type="range"
-                            className="font-size-slider-minimal"
-                            min="10"
-                            max="30"
-                            step="1"
-                            value={editor.fontSize || 14}
-                            onChange={(e) => {
-                              const size = parseInt(e.target.value);
-                              editor.setFontSize(size);
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                          <div className="font-size-box-container">
-                            <div 
-                              className="font-size-box"
-                              style={{ left: `calc(${((editor.fontSize || 14) - 10) * 5}% - 15px)`, top: '-20px' }}
-                            >
-                              {editor.fontSize || 14}
-                            </div>
-                          </div>
-                          <div className="font-size-ticks">
-                            <span>10</span>
-                            <span>15</span>
-                            <span>20</span>
-                            <span>25</span>
-                            <span>30</span>
-                          </div>
-                        </div>
-                      </div>
+                      <span>글꼴 크기</span>
+                      <select 
+                        className="font-size-select"
+                        value={editor.fontSize || 14}
+                        onChange={(e) => {
+                          const size = parseInt(e.target.value);
+                          editor.setFontSize(size);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <option value="10">10px</option>
+                        <option value="11">11px</option>
+                        <option value="12">12px</option>
+                        <option value="13">13px</option>
+                        <option value="14">14px</option>
+                        <option value="15">15px</option>
+                        <option value="16">16px</option>
+                        <option value="18">18px</option>
+                        <option value="20">20px</option>
+                        <option value="22">22px</option>
+                        <option value="24">24px</option>
+                        <option value="26">26px</option>
+                        <option value="28">28px</option>
+                        <option value="30">30px</option>
+                      </select>
                     </div>
                     <div className="menu-separator"></div>
                     <div className="menu-option" onClick={() => editor.setFontSize(12)}>
@@ -1548,7 +1550,6 @@ const MainLayout: React.FC = () => {
             {infoTooltipVisible && (
               <div className="info-tooltip">
                 <div className="info-tooltip-content">
-                  <div className="info-tooltip-logo">M</div>
                   <div className="info-tooltip-title">Maulwurf</div>
                   <div className="info-tooltip-version">베타 버전 0.1.0</div>
                   <div className="info-tooltip-author">제작자: 조민기</div>

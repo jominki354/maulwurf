@@ -132,11 +132,12 @@ body {
 
 .menu-left {
   display: flex;
+  align-items: center;
 }
 
 .menu-right {
   display: flex;
-  position: relative;
+  align-items: center;
 }
 
 .menu-item {
