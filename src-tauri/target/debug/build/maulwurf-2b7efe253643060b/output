@@ -1,0 +1,12 @@
+cargo:rerun-if-env-changed=TAURI_CONFIG
+cargo:rerun-if-changed=tauri.conf.json
+cargo:rustc-check-cfg=cfg(desktop)
+cargo:rustc-cfg=desktop
+cargo:rustc-check-cfg=cfg(mobile)
+cargo:rustc-check-cfg=cfg(dev)
+cargo:rustc-cfg=dev
+package.metadata.tauri-winres does not exist
+Microsoft (R) Windows (R) Resource Compiler Version 10.0.10011.16384
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+cargo:rustc-link-arg-bins=D:\maulwurf\src-tauri\target\debug\build\maulwurf-2b7efe253643060b\out\resource.lib

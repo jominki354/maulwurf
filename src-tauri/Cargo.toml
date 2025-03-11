@@ -1,0 +1,30 @@
+[package]
+name = "maulwurf"
+version = "0.1.0"
+description = "G코드 에디터 애플리케이션"
+authors = [""]
+license = "MIT"
+repository = ""
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.5", features = [ "window-all", "path-all", "fs-all", "dialog-all", "shell-open"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+winapi = { version = "0.3", features = ["winuser", "wingdi", "winbase", "fileapi", "winnt", "securitybaseapi", "shellapi"] }
+chrono = "0.4"
+lazy_static = "1.4"
+
+[features]
+# this feature is used for production builds or when `devPath` points to the filesystem
+# DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]
+
+[package.metadata.tauri.bundle]
+windows.skip-webview-install = true
+windows.wix.skip-signing = true 
